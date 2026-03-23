@@ -1,11 +1,14 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  Scissors, Plus, Trash2, ArrowRight,
+  Scissors, Plus, Trash2, ArrowRight, Play,
   Loader, AlertCircle, ChevronRight, Check, X, Film,
   MessageSquare, Zap, Download
 } from "lucide-react";
+
+/* YouTube IFrame Player API — 타입을 로컬로 정의 */
+type YTPlayer = { seekTo: (s: number, a: boolean) => void; playVideo: () => void; pauseVideo: () => void; getCurrentTime: () => number; destroy: () => void };
 
 /* ── 타입 ─────────────────────────────────────────────── */
 type EditClip = {
@@ -113,6 +116,7 @@ export default function EditorPage() {
   const [editEnd, setEditEnd] = useState("");
   const [editLabel, setEditLabel] = useState("하이라이트");
 
+  // 데이터 페치 + 파생 값
   const fetchVideos = useCallback(async () => {
     try {
       const res = await fetch("/api/pipeline");
@@ -128,6 +132,126 @@ export default function EditorPage() {
   const totalClipSec = selected?.editClips
     ?.filter(c => c.included)
     ?.reduce((acc, c) => acc + clipDuration(c), 0) || 0;
+
+  // ── 클립 미리보기 (YouTube IFrame Player API) ──
+  const playerRef = useRef<YTPlayer | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [previewClipIdx, setPreviewClipIdx] = useState(0);
+  const [ytApiReady, setYtApiReady] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0); // 0~1 per clip
+
+  // YouTube IFrame API 로드
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as unknown as Record<string, unknown>).YT) { setYtApiReady(true); return; }
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+    (window as unknown as Record<string, { (): void }>).onYouTubeIframeAPIReady = () => setYtApiReady(true);
+  }, []);
+
+  // Player 생성 (영상 선택 시)
+  useEffect(() => {
+    if (!ytApiReady || !selected?.ytVideoId) return;
+    // 이전 player 정리
+    if (playerRef.current) { try { playerRef.current.destroy(); } catch {} playerRef.current = null; }
+    const el = document.getElementById("yt-player-container");
+    if (!el) return;
+    const div = document.createElement("div");
+    div.id = "yt-player";
+    el.innerHTML = "";
+    el.appendChild(div);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    playerRef.current = new (window as any).YT.Player("yt-player", {
+      videoId: selected.ytVideoId,
+      width: "100%",
+      height: "100%",
+      playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+    }) as YTPlayer;
+    return () => {
+      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    };
+  }, [ytApiReady, selected?.ytVideoId]);
+
+  // 미리보기 시작
+  const startPreview = () => {
+    if (!selected || !playerRef.current) return;
+    const clips = selected.editClips.filter(c => c.included);
+    if (clips.length === 0) return;
+    setPreviewMode(true);
+    setPreviewClipIdx(0);
+    playClipAt(0, clips);
+  };
+
+  // 특정 인덱스 클립 재생
+  const playClipAt = (idx: number, clips: EditClip[]) => {
+    if (!playerRef.current || idx >= clips.length) {
+      stopPreview();
+      return;
+    }
+    const clip = clips[idx];
+    const startSec = timeToSec(clip.startTime);
+    const endSec = timeToSec(clip.endTime);
+    setPreviewClipIdx(idx);
+    setPreviewProgress(0);
+    playerRef.current.seekTo(startSec, true);
+    playerRef.current.playVideo();
+
+    // 구간 끝 감지 타이머
+    if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    previewTimerRef.current = setInterval(() => {
+      if (!playerRef.current) return;
+      const current = playerRef.current.getCurrentTime?.() || 0;
+      const duration = endSec - startSec;
+      const elapsed = current - startSec;
+      setPreviewProgress(Math.min(1, Math.max(0, elapsed / duration)));
+      if (current >= endSec - 0.3) {
+        if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+        const nextIdx = idx + 1;
+        if (nextIdx < clips.length) {
+          playClipAt(nextIdx, clips);
+        } else {
+          stopPreview();
+        }
+      }
+    }, 250);
+  };
+
+  // 미리보기 중지
+  const stopPreview = () => {
+    if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    if (playerRef.current) try { playerRef.current.pauseVideo(); } catch {}
+    setPreviewMode(false);
+    setPreviewClipIdx(-1);
+    setPreviewProgress(0);
+  };
+
+  // 개별 클립 미리보기
+  const playSingleClip = (clip: EditClip) => {
+    if (!playerRef.current) return;
+    const startSec = timeToSec(clip.startTime);
+    const endSec = timeToSec(clip.endTime);
+    const clips = selected?.editClips.filter(c => c.included) || [];
+    const idx = clips.findIndex(c => c.id === clip.id);
+    setPreviewMode(true);
+    setPreviewClipIdx(idx >= 0 ? idx : 0);
+    setPreviewProgress(0);
+    playerRef.current.seekTo(startSec, true);
+    playerRef.current.playVideo();
+
+    if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    previewTimerRef.current = setInterval(() => {
+      if (!playerRef.current) return;
+      const current = playerRef.current.getCurrentTime?.() || 0;
+      const duration = endSec - startSec;
+      const elapsed = current - startSec;
+      setPreviewProgress(Math.min(1, Math.max(0, elapsed / duration)));
+      if (current >= endSec - 0.3) {
+        stopPreview();
+      }
+    }, 250);
+  };
 
   // 클립 추가
   const addClip = async () => {
@@ -291,19 +415,35 @@ export default function EditorPage() {
               {/* 영상 정보 + 미리보기 */}
               <div className="card" style={{ padding: 0, overflow: "hidden" }}>
                 <div style={{ display: "flex" }}>
-                  {/* YouTube 임베드 */}
-                  <div style={{ width: 380, flexShrink: 0, aspectRatio: "16/9", background: "#000" }}>
-                    {selected.ytVideoId ? (
-                      <iframe
-                        src={`https://www.youtube.com/embed/${selected.ytVideoId}?rel=0`}
-                        title={selected.title}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        style={{ width: "100%", height: "100%", border: "none" }}
-                      />
-                    ) : (
-                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
-                        영상 미리보기 불가
+                  {/* YouTube Player API 컨테이너 */}
+                  <div style={{ width: 380, flexShrink: 0, aspectRatio: "16/9", background: "#000", position: "relative" }}>
+                    <div id="yt-player-container" style={{ width: "100%", height: "100%" }} />
+                    {/* 미리보기 오버레이 */}
+                    {previewMode && (
+                      <div style={{
+                        position: "absolute", top: 8, left: 8, right: 8,
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "6px 10px", borderRadius: 8,
+                        background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
+                      }}>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: "50%",
+                          background: "#ef4444", animation: "pulse 1.2s ease-in-out infinite",
+                        }} />
+                        <span style={{ fontSize: 11, color: "white", fontWeight: 600 }}>
+                          클립 {previewClipIdx + 1}/{selected.editClips.filter(c => c.included).length}
+                        </span>
+                        <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.15)", overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%", borderRadius: 2,
+                            background: "#f59e0b", width: `${previewProgress * 100}%`,
+                            transition: "width 0.2s linear",
+                          }} />
+                        </div>
+                        <button onClick={stopPreview} style={{
+                          background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 4,
+                          padding: "2px 6px", cursor: "pointer", color: "white", fontSize: 10,
+                        }}>■ 중지</button>
                       </div>
                     )}
                   </div>
@@ -312,13 +452,31 @@ export default function EditorPage() {
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
                       {selected.channel} · {selected.views || "?"} 조회 · {selected.duration || "?"} · {selected.lang?.toUpperCase() || "?"}
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                       {selected.niche && <span className="badge badge-gray" style={{ fontSize: 10 }}>{selected.niche}</span>}
                       <span className={`badge ${selected.grade === "S" ? "badge-amber" : selected.grade === "A" ? "badge-brand" : "badge-gray"}`} style={{ fontSize: 10 }}>
                         {selected.grade}등급 · {selected.score}점
                       </span>
                       {selected.hasCC && <span className="badge badge-green" style={{ fontSize: 10 }}>CC자막</span>}
                     </div>
+                    {/* 미리보기 버튼 */}
+                    {(selected.editClips?.filter(c => c.included).length || 0) > 0 && (
+                      <button
+                        className="btn btn-brand btn-sm"
+                        style={{
+                          gap: 6, padding: "8px 16px",
+                          background: previewMode ? "linear-gradient(135deg, #ef4444, #f87171)" : "linear-gradient(135deg, #f59e0b, #f97316)",
+                          borderColor: previewMode ? "#ef4444" : "#f59e0b",
+                        }}
+                        onClick={previewMode ? stopPreview : startPreview}
+                      >
+                        {previewMode ? (
+                          <><X size={12} />미리보기 중지</>
+                        ) : (
+                          <><Film size={12} />▶ 선별 구간 미리보기 ({selected.editClips.filter(c => c.included).length}개 클립 · {formatDuration(totalClipSec)})</>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -415,7 +573,12 @@ export default function EditorPage() {
                       padding: "10px 0",
                       borderBottom: "1px solid var(--border-subtle)",
                       opacity: clip.included ? 1 : 0.35,
-                      transition: "opacity 0.2s",
+                      transition: "all 0.2s",
+                      background: previewMode && previewClipIdx === i ? "rgba(245,158,11,0.06)" : "transparent",
+                      borderLeft: previewMode && previewClipIdx === i ? "3px solid #f59e0b" : "3px solid transparent",
+                      paddingLeft: 6,
+                      marginLeft: -6,
+                      borderRadius: 4,
                     }}>
                       {/* 상단: 순서 + 타임코드 + 라벨 + 길이 + 액션 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -479,6 +642,18 @@ export default function EditorPage() {
                         )}
 
                         <div style={{ flex: 1 }} />
+                        {/* 개별 클립 미리보기 */}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{
+                            padding: "3px 6px", fontSize: 10,
+                            color: previewMode && previewClipIdx === i ? "#f59e0b" : undefined,
+                          }}
+                          title={`클립 ${i + 1} 미리보기`}
+                          onClick={() => previewMode && previewClipIdx === i ? stopPreview() : playSingleClip(clip)}
+                        >
+                          {previewMode && previewClipIdx === i ? <X size={11} /> : <Play size={11} fill="currentColor" />}
+                        </button>
                         <button className="btn btn-ghost btn-sm" style={{ padding: "3px 8px", fontSize: 10 }}
                           onClick={() => toggleClip(clip)}>
                           {clip.included ? "제외" : "포함"}
@@ -735,7 +910,7 @@ export default function EditorPage() {
         </div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
     </div>
   );
 }
