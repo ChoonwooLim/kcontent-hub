@@ -22,6 +22,7 @@ type Result = {
 type FrameData = {
   time: string;
   imageUrl: string;
+  type?: "storyboard" | "thumbnail";
   bgX: number; bgY: number;
   frameW: number; frameH: number;
   sheetW: number; sheetH: number;
@@ -34,11 +35,36 @@ const TYPE_LABEL: Record<string, string> = {
   hook: "훅", reaction: "반응", narration: "나레이션", commentary: "해설",
 };
 
-// 스토리보드 프레임 컴포넌트
+// 스토리보드 프레임 컴포넌트 (스토리보드 + 썸네일 폴백 지원)
 function SceneFrame({ frame }: { frame: FrameData }) {
   const DISPLAY_W = 160;
+  const DISPLAY_H = 90;
+
+  // 썸네일 폴백: object-fit cover로 깔끔하게 표시
+  if (frame.type === "thumbnail") {
+    return (
+      <div style={{
+        width: DISPLAY_W, height: DISPLAY_H, flexShrink: 0,
+        borderRadius: 6, overflow: "hidden",
+        border: "1px solid var(--border-subtle)",
+        background: "#111",
+      }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={frame.imageUrl}
+          alt="scene"
+          style={{
+            width: "100%", height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      </div>
+    );
+  }
+
+  // 스토리보드 스프라이트 시트
   const scale = DISPLAY_W / frame.frameW;
-  const DISPLAY_H = Math.round(frame.frameH * scale);
 
   return (
     <div style={{
