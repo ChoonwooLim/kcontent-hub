@@ -1,260 +1,228 @@
 "use client";
 import { useState, useRef } from "react";
 import {
-  Link2, Subtitles, Download, Copy, Check, ChevronDown, ChevronUp,
-  Play, Sparkles, Globe, FileText, Wand2, Clock, AlertCircle
+  Play, Pause, Download, SkipBack, Volume2,
+  Type, Palette, AlignLeft, Layers, Scissors, Image, Send, Check, Zap
 } from "lucide-react";
 
-type SubtitleLine = { index: number; start: string; end: string; original: string; translated: string; editing: boolean };
-
-const DEMO_SUBTITLES: SubtitleLine[] = [
-  { index: 1, start: "00:00:02", end: "00:00:06", original: "Hey guys, welcome back to my channel!", translated: "안녕하세요! 채널에 돌아오신 것을 환영합니다!", editing: false },
-  { index: 2, start: "00:00:07", end: "00:00:12", original: "Today we're going to talk about something super interesting.", translated: "오늘은 정말 흥미로운 주제에 대해 이야기해볼게요.", editing: false },
-  { index: 3, start: "00:00:13", end: "00:00:19", original: "I've been getting so many questions about this topic lately.", translated: "요즘 이 주제에 대한 질문을 정말 많이 받고 있거든요.", editing: false },
-  { index: 4, start: "00:00:20", end: "00:00:27", original: "So today I'm going to answer all of them in one video.", translated: "그래서 오늘 이 영상 하나에서 모든 질문에 답해드릴게요.", editing: false },
-  { index: 5, start: "00:00:28", end: "00:00:35", original: "Make sure you stick around until the end because there's a surprise!", translated: "마지막까지 꼭 봐주세요, 깜짝 선물이 있거든요!", editing: false },
-  { index: 6, start: "00:00:36", end: "00:00:44", original: "First, let's start with the basics that everyone needs to know.", translated: "먼저, 모든 사람이 알아야 할 기본부터 시작해봅시다.", editing: false },
+const DEMO_SUBS = [
+  { id: 1, start: 0, end: 7, text: "🇺🇸 미국에서 온 닉이 처음으로 한국 편의점 문을 열었습니다.", type: "narration" },
+  { id: 2, start: 8, end: 15, text: "\"이게 편의점이야?\" — 닉의 표정이 굳어집니다.", type: "reaction" },
+  { id: 3, start: 16, end: 26, text: "한국 편의점에는 세계 어디에서도 볼 수 없는 것들이 있습니다.", type: "narration" },
+  { id: 4, start: 27, end: 38, text: "삼각김밥, 컵라면, 구운 계란... 외국인이 충격 받는 이유를 파헤칩니다.", type: "narration" },
+  { id: 5, start: 39, end: 52, text: "닉: \"이거 먹어도 돼요? 그냥 여기서?\" (편의점 내 취식 문화에 당황)", type: "reaction" },
+  { id: 6, start: 53, end: 65, text: "🇰🇷 우리에겐 너무나 당연한 것들이 세계에서는 특별합니다.", type: "commentary" },
 ];
 
-type Stage = "idle" | "loading" | "extracting" | "translating" | "done";
+const TYPE_COLORS: Record<string, string> = {
+  narration: "#10b981",
+  reaction: "#6366f1",
+  hook: "#f59e0b",
+  commentary: "#ec4899",
+};
+
+const FONT_PRESETS = [
+  { name: "기본 흰색", color: "#ffffff", bg: "rgba(0,0,0,0.7)", font: "Inter" },
+  { name: "노란 강조", color: "#fbbf24", bg: "rgba(0,0,0,0.8)", font: "Outfit" },
+  { name: "K-뉴스", color: "#ffffff", bg: "rgba(239,68,68,0.85)", font: "Outfit" },
+  { name: "모노 코드", color: "#7c85f0", bg: "rgba(10,10,20,0.9)", font: "JetBrains Mono" },
+];
+
+const VIDEO_DURATION = 65;
+
+function formatTime(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
 
 export default function StudioPage() {
-  const [url, setUrl] = useState("");
-  const [stage, setStage] = useState<Stage>("idle");
-  const [subtitles, setSubtitles] = useState<SubtitleLine[]>([]);
-  const [progress, setProgress] = useState(0);
-  const [copied, setCopied] = useState<number | null>(null);
-  const [leadText, setLeadText] = useState(`📢 무료 특강 신청 → https://kcontent-hub.com/apply
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [selectedSub, setSelectedSub] = useState<number | null>(null);
+  const [subs, setSubs] = useState(DEMO_SUBS);
+  const [preset, setPreset] = useState(0);
+  const [exported, setExported] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-🔥 지금 신청하면 무료 자료 + 라이브 특강 무료!
-
-✅ 촬영 없이 월 200만원 수익 방법 공개
-✅ 해외 영상으로 유튜브 채널 운영하는 법
-✅ 리드 수집 & 강의 판매 자동화 전략
-
-📌 비즈니스 문의: contact@kcontent-hub.com`);
-
-  const runAutomate = () => {
-    if (!url && stage === "idle") {
-      setUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  const togglePlay = () => {
+    if (playing) {
+      clearInterval(timerRef.current!);
+      setPlaying(false);
+    } else {
+      setPlaying(true);
+      timerRef.current = setInterval(() => {
+        setCurrentTime(t => {
+          if (t >= VIDEO_DURATION) { setPlaying(false); clearInterval(timerRef.current!); return 0; }
+          return t + 0.1;
+        });
+      }, 100);
     }
-    setStage("loading");
-    setProgress(0);
-
-    const steps: { stage: Stage; progress: number; delay: number }[] = [
-      { stage: "loading", progress: 15, delay: 400 },
-      { stage: "extracting", progress: 40, delay: 1200 },
-      { stage: "translating", progress: 70, delay: 2400 },
-      { stage: "done", progress: 100, delay: 3600 },
-    ];
-
-    steps.forEach(({ stage: s, progress: p, delay: d }) => {
-      setTimeout(() => {
-        setStage(s);
-        setProgress(p);
-        if (s === "done") setSubtitles(DEMO_SUBTITLES);
-      }, d);
-    });
   };
 
-  const handleCopy = (index: number, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(index);
-    setTimeout(() => setCopied(null), 1500);
+  const activeSub = subs.find(s => currentTime >= s.start && currentTime <= s.end);
+  const p = FONT_PRESETS[preset];
+  const pct = (currentTime / VIDEO_DURATION) * 100;
+
+  const updateSubText = (id: number, text: string) => {
+    setSubs(prev => prev.map(s => s.id === id ? { ...s, text } : s));
   };
 
-  const downloadSRT = () => {
-    const srt = subtitles.map(({ index, start, end, translated }) =>
-      `${index}\n${start},000 --> ${end},000\n${translated}\n`
-    ).join("\n");
-    const blob = new Blob([srt], { type: "text/plain" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "subtitle_ko.srt";
-    a.click();
-  };
-
-  const downloadVTT = () => {
-    const vtt = "WEBVTT\n\n" + subtitles.map(({ index, start, end, translated }) =>
-      `${index}\n${start}.000 --> ${end}.000\n${translated}\n`
-    ).join("\n");
-    const blob = new Blob([vtt], { type: "text/vtt" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "subtitle_ko.vtt";
-    a.click();
-  };
-
-  const STAGE_LABELS: Record<Stage, string> = {
-    idle: "",
-    loading: "영상 정보 불러오는 중...",
-    extracting: "원문 자막 추출 중...",
-    translating: "GPT로 한국어 번역 중...",
-    done: "자막 생성 완료!"
+  const handleExport = () => {
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 1100 }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 1100 }}>
       <div>
-        <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>자막 스튜디오 🎬</h1>
-        <p style={{ color: "#71717a" }}>유튜브 URL을 입력하면 AI가 자막을 추출하고 한국어로 자동 번역합니다</p>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>편집 스튜디오</h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>타임라인 자막 편집 · 스타일 설정 · SRT/VTT 내보내기 · 배포 전달</p>
       </div>
 
-      {/* URL Input */}
-      <div className="card" style={{ padding: 24 }}>
-        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1, position: "relative" }}>
-            <Link2 size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#52525b" }} />
-            <input
-              className="input-dark"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-              style={{ paddingLeft: 44 }}
-            />
-          </div>
-          <button className="btn-primary" onClick={runAutomate}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 24px", whiteSpace: "nowrap" }}>
-            <Wand2 size={18} />
-            자동 번역 시작
-          </button>
-        </div>
-
-        {/* Tips */}
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          {[
-            { icon: Globe, text: "영어, 일본어, 스페인어 등 20개 언어 지원" },
-            { icon: Clock, text: "평균 처리 시간: 3~5분" },
-            { icon: Subtitles, text: "SRT / VTT 형식 다운로드" },
-          ].map(({ icon: Icon, text }, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#71717a" }}>
-              <Icon size={14} color="#52525b" /> {text}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 18 }}>
+        {/* Left: Preview + Timeline */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Video Preview */}
+          <div style={{ background: "#000", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border-default)", aspectRatio: "16/9", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {/* Fake video background */}
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #1a0a2e, #0a1628, #0d2818)", opacity: 0.9 }} />
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ textAlign: "center", color: "rgba(255,255,255,0.15)", fontSize: 13 }}>
+                [원본 영상 미리보기]<br />
+                <span style={{ fontSize: 11 }}>실제 사용 시 YouTube URL로 스트리밍</span>
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Progress */}
-      {stage !== "idle" && stage !== "done" && (
-        <div className="card" style={{ padding: 28, textAlign: "center" }}>
-          <div style={{
-            width: 64, height: 64, border: "3px solid rgba(239,68,68,0.2)", borderTop: "3px solid #ef4444",
-            borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 20px"
-          }} />
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{STAGE_LABELS[stage]}</div>
-          <div className="progress-bar" style={{ maxWidth: 400, margin: "0 auto" }}>
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
-          </div>
-          <div style={{ fontSize: 13, color: "#71717a", marginTop: 10 }}>{progress}% 완료</div>
-        </div>
-      )}
-
-      {/* Results */}
-      {stage === "done" && (
-        <>
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <div className="badge badge-green" style={{ fontSize: 14, padding: "8px 16px" }}>
-              ✓ {subtitles.length}개 자막 라인 생성 완료
+            {/* Subtitle overlay */}
+            {activeSub && (
+              <div style={{
+                position: "absolute", bottom: "12%", left: "50%", transform: "translateX(-50%)",
+                background: p.bg, color: p.color, padding: "8px 18px", borderRadius: 6,
+                fontSize: 16, fontWeight: 600, fontFamily: p.font, textAlign: "center",
+                maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap",
+                transition: "opacity 0.2s"
+              }}>
+                {activeSub.text}
+              </div>
+            )}
+            {/* Time overlay */}
+            <div style={{ position: "absolute", top: 10, right: 12, background: "rgba(0,0,0,0.6)", color: "white", padding: "3px 8px", borderRadius: 5, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+              {formatTime(currentTime)} / {formatTime(VIDEO_DURATION)}
             </div>
-            <button className="btn-primary" onClick={downloadSRT}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px" }}>
-              <Download size={16} /> SRT 다운로드
-            </button>
-            <button className="btn-secondary" onClick={downloadVTT}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px" }}>
-              <Download size={16} /> VTT 다운로드
-            </button>
           </div>
 
-          {/* Subtitle Editor */}
+          {/* Player Controls */}
+          <div className="card" style={{ padding: "12px 16px" }}>
+            <div style={{ position: "relative", marginBottom: 12, cursor: "pointer" }}
+              onClick={e => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setCurrentTime(((e.clientX - rect.left) / rect.width) * VIDEO_DURATION);
+              }}>
+              {/* Background segments */}
+              <div className="timeline-track" style={{ height: 44, background: "var(--bg-input)" }}>
+                {subs.map(s => (
+                  <div key={s.id} className="timeline-segment"
+                    style={{ left: `${(s.start / VIDEO_DURATION) * 100}%`, width: `${((s.end - s.start) / VIDEO_DURATION) * 100}%`, background: TYPE_COLORS[s.type] + "40", color: TYPE_COLORS[s.type], borderLeft: `2px solid ${TYPE_COLORS[s.type]}` }}>
+                    {s.text.slice(0, 16)}...
+                  </div>
+                ))}
+                <div className="timeline-playhead" style={{ left: `${pct}%` }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button className="btn-icon" onClick={() => setCurrentTime(0)}><SkipBack size={14} /></button>
+              <button onClick={togglePlay} style={{ width: 36, height: 36, borderRadius: 8, background: "var(--gradient-brand)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 12px var(--brand-glow)" }}>
+                {playing ? <Pause size={16} color="white" fill="white" /> : <Play size={16} color="white" fill="white" />}
+              </button>
+              <div style={{ flex: 1, font: "12px JetBrains Mono, monospace", color: "var(--text-muted)" }}>
+                {formatTime(currentTime)} / {formatTime(VIDEO_DURATION)}
+              </div>
+              <Volume2 size={14} color="var(--text-muted)" />
+            </div>
+          </div>
+
+          {/* Subtitle List Editor */}
           <div className="card" style={{ overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ fontSize: 17, fontWeight: 700 }}>자막 편집기</h2>
-              <span style={{ fontSize: 13, color: "#71717a" }}>클릭하여 수정 가능</span>
-            </div>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", fontSize: 13, fontWeight: 700 }}>자막 편집</div>
             <div>
-              {subtitles.map((line, idx) => (
-                <div key={idx} style={{
-                  display: "grid", gridTemplateColumns: "80px 1fr 1fr 40px",
-                  gap: 0, borderBottom: "1px solid rgba(39,39,42,0.5)",
-                  transition: "background 0.2s"
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                >
-                  {/* Time */}
-                  <div style={{ padding: "14px 16px", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 2 }}>
-                    <div style={{ fontSize: 11, color: "#52525b", fontFamily: "monospace" }}>{line.start}</div>
-                    <div style={{ fontSize: 11, color: "#3f3f46", fontFamily: "monospace" }}>↕</div>
-                    <div style={{ fontSize: 11, color: "#52525b", fontFamily: "monospace" }}>{line.end}</div>
+              {subs.map((s, i) => (
+                <div key={s.id}
+                  onClick={() => { setSelectedSub(s.id); setCurrentTime(s.start); }}
+                  style={{ display: "grid", gridTemplateColumns: "60px 52px 1fr", borderBottom: "1px solid rgba(30,30,46,0.5)", cursor: "pointer", background: selectedSub === s.id ? "rgba(99,102,241,0.05)" : "transparent", borderLeft: selectedSub === s.id ? "2px solid var(--brand)" : "2px solid transparent" }}>
+                  <div style={{ padding: "10px 10px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--text-muted)", display: "flex", alignItems: "center" }}>{formatTime(s.start)}</div>
+                  <div style={{ padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: TYPE_COLORS[s.type], display: "inline-block" }} />
                   </div>
-                  {/* Original */}
-                  <div style={{ padding: "14px 16px", borderRight: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 11, color: "#52525b", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>원문 (EN)</div>
-                    <div style={{ fontSize: 14, color: "#a1a1aa", lineHeight: 1.5 }}>{line.original}</div>
-                  </div>
-                  {/* Translated */}
-                  <div style={{ padding: "14px 16px", borderRight: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 11, color: "#52525b", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>번역 (KO)</div>
-                    <textarea
-                      defaultValue={line.translated}
-                      style={{
-                        width: "100%", background: "transparent", border: "none", outline: "none",
-                        color: "white", fontSize: 14, lineHeight: 1.5, resize: "none", fontFamily: "Inter, sans-serif",
-                        minHeight: 48
-                      }}
-                    />
-                  </div>
-                  {/* Actions */}
-                  <div style={{ padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                    <button onClick={() => handleCopy(idx, line.translated)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "#52525b", padding: 4 }}>
-                      {copied === idx ? <Check size={14} color="#4ade80" /> : <Copy size={14} />}
-                    </button>
-                  </div>
+                  <textarea value={s.text} onChange={e => updateSubText(s.id, e.target.value)} rows={2}
+                    style={{ margin: "8px 12px 8px 0", width: "calc(100% - 12px)", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13, resize: "none", fontFamily: "Inter, sans-serif", lineHeight: 1.5 }} />
                 </div>
               ))}
             </div>
           </div>
+        </div>
 
-          {/* Lead Description Generator */}
-          <div className="card" style={{ padding: 24 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div>
-                <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>설명란 리드 자동 생성</h2>
-                <p style={{ fontSize: 13, color: "#71717a" }}>영상 설명란에 삽입할 리드 수집 문구를 자동 생성합니다</p>
-              </div>
-              <button className="btn-primary" style={{ padding: "8px 18px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                <Sparkles size={15} /> AI 재생성
-              </button>
-            </div>
-            <textarea
-              value={leadText}
-              onChange={e => setLeadText(e.target.value)}
-              rows={8}
-              style={{
-                width: "100%", background: "var(--bg-secondary)", border: "1px solid var(--border)",
-                borderRadius: 10, padding: "14px 16px", color: "white", fontSize: 14,
-                lineHeight: 1.7, resize: "vertical", fontFamily: "Inter, sans-serif", outline: "none"
-              }}
-            />
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button className="btn-primary" onClick={() => { navigator.clipboard.writeText(leadText); }}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", fontSize: 13 }}>
-                <Copy size={14} /> 복사
-              </button>
-              <a href="/dashboard/scheduler" style={{ textDecoration: "none" }}>
-                <button className="btn-secondary" style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", fontSize: 13 }}>
-                  스케줄러로 보내기 →
+        {/* Right: Style Panel */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Font Presets */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>자막 스타일</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {FONT_PRESETS.map((fp, i) => (
+                <button key={i} onClick={() => setPreset(i)}
+                  style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${preset === i ? "var(--brand)" : "var(--border-default)"}`, background: preset === i ? "var(--brand-dim)" : "var(--bg-elevated)", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "all 0.15s" }}>
+                  <div style={{ padding: "4px 10px", borderRadius: 5, background: fp.bg, color: fp.color, fontSize: 11, fontFamily: fp.font, fontWeight: 600, whiteSpace: "nowrap" }}>
+                    가나다 Abc
+                  </div>
+                  <span style={{ fontSize: 12, color: preset === i ? "#818cf8" : "var(--text-muted)", flex: 1, textAlign: "left" }}>{fp.name}</span>
+                  {preset === i && <Check size={12} color="#818cf8" />}
                 </button>
-              </a>
+              ))}
             </div>
           </div>
-        </>
-      )}
+
+          {/* Thumbnail Editor */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>썸네일</div>
+            <div style={{ background: "linear-gradient(135deg, #7c3aed, #1d4ed8)", borderRadius: 8, aspectRatio: "16/9", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "12px 10px", marginBottom: 10, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.25)" }} />
+              <div style={{ background: "rgba(239,68,68,0.9)", color: "white", fontSize: 12, fontWeight: 800, fontFamily: "Outfit", padding: "4px 12px", borderRadius: 4, position: "relative", zIndex: 1 }}>
+                미국인이 한국 편의점 보고 경악한 이유
+              </div>
+              <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
+                <div style={{ color: "white", fontSize: 17, fontWeight: 900, fontFamily: "Outfit", textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
+                  "이게 편의점이라고?!"
+                </div>
+              </div>
+            </div>
+            <button className="btn btn-ghost btn-sm" style={{ width: "100%", gap: 6 }}>
+              <Image size={12} /> 썸네일 편집기 열기
+            </button>
+          </div>
+
+          {/* Export */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>내보내기</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" style={{ justifyContent: "flex-start", gap: 8 }}>
+                <Download size={13} /> SRT 자막 파일 다운로드
+              </button>
+              <button className="btn btn-ghost btn-sm" style={{ justifyContent: "flex-start", gap: 8 }}>
+                <Download size={13} /> VTT 자막 파일 다운로드
+              </button>
+              <button className="btn btn-ghost btn-sm" style={{ justifyContent: "flex-start", gap: 8 }}>
+                <Layers size={13} /> 자막 소각 영상 렌더링
+              </button>
+            </div>
+          </div>
+
+          {/* Send to Publisher */}
+          <a href="/dashboard/publisher" style={{ textDecoration: "none" }}>
+            <button className="btn btn-brand" onClick={handleExport} style={{ width: "100%", padding: "12px", fontSize: 14, gap: 8 }}>
+              {exported ? <><Check size={15} />배포 패널로 전송됨!</> : <><Send size={15} />배포 패널로 보내기</>}
+            </button>
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,148 +1,104 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
 import {
-  LayoutDashboard, Search, Subtitles, Calendar, BarChart2,
-  Youtube, Settings, ChevronRight, Bell, Menu, X, Zap
+  LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
+  ChevronRight, Bell, Layers, BarChart2
 } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "대시보드", icon: LayoutDashboard },
-  { href: "/dashboard/finder", label: "콘텐츠 파인더", icon: Search },
-  { href: "/dashboard/studio", label: "자막 스튜디오", icon: Subtitles },
-  { href: "/dashboard/scheduler", label: "업로드 스케줄러", icon: Calendar },
-  { href: "/dashboard/earnings", label: "수익 트래커", icon: BarChart2 },
+const NAV = [
+  { section: "제작 파이프라인" },
+  { href: "/dashboard", label: "파이프라인 보드", icon: LayoutDashboard },
+  { href: "/dashboard/hunter", label: "소재 수집기", icon: Search },
+  { href: "/dashboard/script", label: "AI 대본 엔진", icon: Cpu },
+  { href: "/dashboard/studio", label: "편집 스튜디오", icon: Film },
+  { href: "/dashboard/publisher", label: "멀티플랫폼 배포", icon: Globe },
+  { section: "관리" },
+  { href: "/dashboard/channels", label: "채널 관리", icon: Youtube },
+  { href: "/dashboard/analytics", label: "수익 분석", icon: BarChart2 },
+  { href: "/dashboard/settings", label: "API 설정", icon: Settings },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)" }}>
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 40, backdropFilter: "blur(4px)" }}
-        />
-      )}
-
+    <div className="app-shell">
       {/* Sidebar */}
-      <aside style={{
-        width: 240, flexShrink: 0, height: "100vh", position: "sticky", top: 0,
-        borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column",
-        background: "var(--bg-secondary)", zIndex: 50,
-        transition: "transform 0.3s ease",
-        ...(typeof window !== "undefined" && window.innerWidth < 768 ? {
-          position: "fixed" as const, left: 0, transform: sidebarOpen ? "none" : "translateX(-100%)"
-        } : {})
-      }}>
+      <aside className="sidebar">
         {/* Logo */}
-        <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid var(--border)" }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-            <div style={{
-              background: "var(--gradient-red)", width: 36, height: 36, borderRadius: 8,
-              display: "flex", alignItems: "center", justifyContent: "center"
-            }}>
-              <Youtube size={20} color="white" />
+        <div style={{ padding: "16px 14px 12px", borderBottom: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ background: "var(--gradient-brand)", width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 0 16px var(--brand-glow)" }}>
+              <Film size={16} color="white" />
             </div>
             <div>
-              <div style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 17, color: "white" }}>
-                KContent<span style={{ color: "#f87171" }}>Hub</span>
-              </div>
-              <div style={{ fontSize: 11, color: "#52525b" }}>자동 수익화 플랫폼</div>
+              <div style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 15, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>KContent<span style={{ color: "#818cf8" }}> Studio</span></div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>v2.0 · Production</div>
             </div>
           </Link>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: "16px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: 11, color: "#52525b", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", padding: "0 8px", marginBottom: 8 }}>
-            메뉴
-          </div>
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href;
+        <nav style={{ flex: 1, padding: "10px 10px", overflowY: "auto" }}>
+          {NAV.map((item, i) => {
+            if ("section" in item) {
+              return <div key={i} className="nav-section">{item.section}</div>;
+            }
+            const active = pathname === item.href;
+            const Icon = item.icon;
             return (
-              <Link key={href} href={href} className={`sidebar-link ${active ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-                <Icon size={18} />
-                <span>{label}</span>
-                {active && <ChevronRight size={14} style={{ marginLeft: "auto" }} />}
+              <Link key={item.href} href={item.href} className={`nav-item ${active ? "active" : ""}`} style={{ display: "flex" }}>
+                <Icon size={15} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {active && <ChevronRight size={12} style={{ opacity: 0.6 }} />}
               </Link>
             );
           })}
-
-          <div style={{ flexGrow: 1 }} />
-
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, marginTop: 12 }}>
-            <Link href="/settings" className="sidebar-link">
-              <Settings size={18} />
-              <span>API 설정</span>
-            </Link>
-          </div>
         </nav>
 
-        {/* Upgrade Card */}
-        <div style={{ padding: "12px", borderTop: "1px solid var(--border)" }}>
-          <div style={{
-            background: "linear-gradient(135deg, rgba(239,68,68,0.1), rgba(249,115,22,0.1))",
-            border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: 16
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <Zap size={16} color="#f87171" />
-              <span style={{ fontWeight: 700, fontSize: 14 }}>Pro 플랜</span>
+        {/* Pipeline Status */}
+        <div style={{ padding: "12px", borderTop: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+              <span className="live-dot" />
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)" }}>파이프라인 동작 중</span>
             </div>
-            <p style={{ fontSize: 12, color: "#71717a", marginBottom: 12, lineHeight: 1.5 }}>
-              무제한 채널 · 자동 업로드 · 고급 분석
-            </p>
-            <button className="btn-primary" style={{ width: "100%", padding: "8px", fontSize: 13 }}>
-              업그레이드
-            </button>
+            {[
+              { label: "오늘 처리 영상", val: "12개" },
+              { label: "업로드 대기", val: "3개" },
+            ].map(({ label, val }) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                <span>{label}</span>
+                <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{val}</span>
+              </div>
+            ))}
           </div>
         </div>
       </aside>
 
       {/* Main */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {/* Top Bar */}
-        <header style={{
-          height: 64, display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 24px", borderBottom: "1px solid var(--border)",
-          background: "rgba(9,9,11,0.8)", backdropFilter: "blur(12px)",
-          position: "sticky", top: 0, zIndex: 30
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", display: "flex" }}
-            >
-              <Menu size={20} />
-            </button>
-            <div style={{ fontSize: 14, color: "#71717a" }}>
-              {NAV_ITEMS.find(n => n.href === pathname)?.label || "대시보드"}
-            </div>
+      <div className="main-content">
+        {/* Topbar */}
+        <header className="topbar">
+          <div style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>
+            {NAV.filter(n => "href" in n && n.href === pathname).map(n => "label" in n ? n.label : "")[0] || "KContent Studio"}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div className="badge badge-green" style={{ fontSize: 12 }}>
-              <span style={{ width: 6, height: 6, background: "#4ade80", borderRadius: "50%" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="badge badge-green" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span className="live-dot" style={{ width: 5, height: 5 }} />
               자동화 실행 중
             </div>
-            <button style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", position: "relative" }}>
-              <Bell size={18} />
-              <span style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, background: "#ef4444", borderRadius: "50%" }} />
+            <button className="btn-icon" style={{ position: "relative" }}>
+              <Bell size={15} />
+              <span style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, background: "var(--accent-red)", borderRadius: "50%" }} />
             </button>
-            <div style={{
-              width: 36, height: 36, borderRadius: "50%",
-              background: "linear-gradient(135deg, #ef4444, #f97316)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 14, fontWeight: 700, color: "white", cursor: "pointer"
-            }}>K</div>
+            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--gradient-brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "white", cursor: "pointer" }}>Y</div>
           </div>
         </header>
 
         {/* Page Content */}
-        <main style={{ flex: 1, overflow: "auto", padding: "28px 28px" }}>
+        <main className="page-content">
           {children}
         </main>
       </div>
