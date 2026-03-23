@@ -273,9 +273,20 @@ function ScriptPageInner() {
                 <button className="btn btn-ghost btn-sm" onClick={copyAll}>
                   {copied ? <><Check size={12} color="#34d399" />복사됨</> : <><Copy size={12} />전체 복사</>}
                 </button>
-                <a href="/dashboard/studio" style={{ textDecoration: "none" }}>
-                  <button className="btn btn-brand btn-sm"><Film size={12} />편집 스튜디오로</button>
-                </a>
+                <button className="btn btn-brand btn-sm" onClick={() => {
+                  if (result) {
+                    sessionStorage.setItem("studio_data", JSON.stringify({
+                      videoId: result.videoId,
+                      videoTitle: result.videoTitle,
+                      channelTitle: result.channelTitle,
+                      title: result.title,
+                      thumbnailTop: result.thumbnailTop,
+                      thumbnailBottom: result.thumbnailBottom,
+                      script: result.script,
+                    }));
+                    window.location.href = "/dashboard/studio";
+                  }
+                }}><Film size={12} />편집 스튜디오로</button>
               </div>
             </div>
 
