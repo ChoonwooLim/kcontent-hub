@@ -63,19 +63,16 @@ export async function POST(req: NextRequest) {
 
   // ── 2단계: 실제 YouTube 자막 추출 ──────────────────────────────
   let transcriptText = "";
-  let transcriptSegments: { offset: number; text: string }[] = [];
 
   try {
     // 영어 자막 우선, 없으면 자동생성 자막
     const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-    transcriptSegments = transcript.map(t => ({ offset: t.offset, text: t.text }));
-    transcriptText = transcript.map(t => t.text).join(" ").slice(0, 6000);
+    transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
   } catch {
     // 영어 자막 없으면 한국어 시도
     try {
       const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "ko" });
-      transcriptSegments = transcript.map(t => ({ offset: t.offset, text: t.text }));
-      transcriptText = transcript.map(t => t.text).join(" ").slice(0, 6000);
+      transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
     } catch {
       transcriptText = ""; // 자막 없음 — 제목/설명만으로 대본 생성
     }
@@ -100,12 +97,31 @@ export async function POST(req: NextRequest) {
 - 대본 유형: hook(훅/충격), reaction(외국인반응), narration(나레이션), commentary(해설)
 - 한국 시청자 감성 최적화: 국뽕, 공감, 충격, 재미 포인트 강조`;
 
+  // 영상 길이 기반 최소 장면 수 계산
+  function parseDurationSecs(iso: string): number {
+    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return 0;
+    return (parseInt(m[1]||"0")*3600) + (parseInt(m[2]||"0")*60) + parseInt(m[3]||"0");
+  }
+  const durationSecs = parseDurationSecs(duration);
+  const minScenes = Math.max(12, Math.floor(durationSecs / 40)); // 40초당 1장면, 최소 12개
+  const durationLabel = durationSecs > 0
+    ? `${Math.floor(durationSecs/60)}분 ${durationSecs%60}초`
+    : "알 수 없음";
+
   const userPrompt = `다음 YouTube 영상 정보를 바탕으로 한국어 자막 대본을 생성하세요.
 
 영상 제목: ${videoTitle || "정보 없음"}
 채널명: ${channelTitle || "정보 없음"}
+영상 길이: ${durationLabel}
 ${videoDescription ? `영상 설명: ${videoDescription}` : ""}
 ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: 자막 없음 — 제목과 설명만으로 대본 창작"}
+
+[중요] 영상 전체를 균일하게 커버해야 합니다.
+- 영상 길이: ${durationLabel}
+- 최소 장면 수: ${minScenes}개 이상
+- 타임스탬프를 영상 시작(00:00)부터 끝까지 균등하게 배분하세요
+- 자막 원문이 있으면 실제 대사/장면을 반영하세요
 
 다음 JSON을 정확히 반환하세요:
 {
@@ -113,9 +129,10 @@ ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: �
   "thumbnailTop": "썸네일 상단 텍스트 (충격/호기심 유발, 15자 이내)",
   "thumbnailBottom": "썸네일 하단 임팩트 문구 (12자 이내, 따옴표 포함 가능)",
   "script": [
-    { "time": "00:00", "type": "hook", "ko": "시청자를 사로잡는 첫 문장" },
-    { "time": "00:15", "type": "reaction", "ko": "외국인 반응 묘사" },
-    ...최소 8개 장면
+    { "time": "00:00", "type": "hook",      "ko": "시청자를 사로잡는 첫 문장" },
+    { "time": "00:30", "type": "narration", "ko": "상황 설명" },
+    { "time": "01:00", "type": "reaction",  "ko": "외국인 반응 묘사" },
+    ...${minScenes}개 이상의 장면 (영상 끝까지 커버)
   ]
 }`;
 
@@ -132,7 +149,7 @@ ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: �
         { role: "user",   content: userPrompt },
       ],
       temperature: 0.7,
-      max_tokens: 2000,
+      max_tokens: 4000,
     }),
   });
 

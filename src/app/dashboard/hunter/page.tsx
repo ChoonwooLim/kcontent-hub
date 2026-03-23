@@ -2,7 +2,7 @@
 import { useState } from "react";
 import {
   Search, SlidersHorizontal, Play, Eye, ThumbsUp, Clock,
-  Download, RefreshCw, Zap, X, ExternalLink, Youtube, AlertCircle
+  Download, RefreshCw, Zap, X, ExternalLink, AlertCircle
 } from "lucide-react";
 
 const NICHES = ["전체", "K-먹방", "K-바비큐", "K-교통", "K-문화", "K-의료", "K-뷰티", "K-라이프", "K-쇼핑", "K-관광"];
@@ -37,7 +37,6 @@ function ScoreMeter({ score, grade }: { score: number; grade: "S" | "A" | "B" })
 
 function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void }) {
   const ytUrl = `https://www.youtube.com/watch?v=${video.ytId}`;
-  const [imgError, setImgError] = useState(false);
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 1000,
@@ -50,62 +49,30 @@ function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void 
         border: "1px solid var(--border-default)",
         boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
       }}>
-        <a href={ytUrl} target="_blank" rel="noopener noreferrer"
-          style={{ textDecoration: "none", display: "block", position: "relative", cursor: "pointer" }}>
-          <div style={{ position: "relative", paddingTop: "56.25%", overflow: "hidden", background: "#111" }}>
-            {video.thumbnail && !imgError ? (
-              <img src={video.thumbnail} alt={video.title}
-                onError={() => setImgError(true)}
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : (
-              <div style={{
-                position: "absolute", inset: 0,
-                background: `linear-gradient(135deg, ${video.thumbnailFallback}cc, ${video.thumbnailFallback}44)`,
-              }} />
-            )}
-            <div style={{
-              position: "absolute", inset: 0,
-              background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <div style={{
-                width: 72, height: 72, borderRadius: "50%",
-                background: "#ff0000", display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 4px 24px rgba(255,0,0,0.5)",
-              }}>
-                <Play size={28} color="white" fill="white" style={{ marginLeft: 4 }} />
-              </div>
-            </div>
-            <div style={{
-              position: "absolute", bottom: 12, right: 12,
-              background: "rgba(0,0,0,0.7)", borderRadius: 6, padding: "4px 10px",
-              display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "white", fontWeight: 700,
-            }}>
-              <Youtube size={14} color="#ff0000" fill="#ff0000" />YouTube에서 시청
-            </div>
-          </div>
-        </a>
-        <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        {/* 실제 YouTube iframe 임베드 (임베드 가능 영상만 수집됨) */}
+        <div style={{ position: "relative", paddingTop: "56.25%", background: "#000" }}>
+          <iframe
+            src={`https://www.youtube.com/embed/${video.ytId}?autoplay=1&rel=0`}
+            title={video.title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
+          />
+        </div>
+        {/* 하단 정보 바 */}
+        <div style={{ padding: "13px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-              {video.channel} · 구독자 {video.subs} · {video.views} 조회 · {video.duration}
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{video.channel} · 구독자 {video.subs} · {video.views} 조회 · {video.duration}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 7, flexShrink: 0 }}>
             <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-              <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}>
-                <ExternalLink size={12} />YouTube 열기
-              </button>
+              <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}><ExternalLink size={12} />YouTube</button>
             </a>
             <a href={`/dashboard/script?url=${encodeURIComponent(ytUrl)}`} style={{ textDecoration: "none" }}>
-              <button className="btn btn-brand btn-sm" style={{ gap: 6 }}>
-                <Zap size={12} />AI 대본 생성
-              </button>
+              <button className="btn btn-brand btn-sm" style={{ gap: 6 }}><Zap size={12} />AI 대본 생성</button>
             </a>
-            <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ padding: "6px 8px" }}>
-              <X size={14} />
-            </button>
+            <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ padding: "6px 8px" }}><X size={14} /></button>
           </div>
         </div>
       </div>

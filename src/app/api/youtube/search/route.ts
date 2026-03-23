@@ -122,8 +122,9 @@ export async function POST(req: NextRequest) {
       const searchRes = await fetch(
         `https://www.googleapis.com/youtube/v3/search?` +
         `part=snippet&type=video&q=${encodeURIComponent(keyword)}&` +
-        `publishedAfter=${publishedAfter}&maxResults=15&` +
-        `videoDuration=medium&relevanceLanguage=en&key=${apiKey}`
+        `publishedAfter=${publishedAfter}&maxResults=20&` +
+        `videoDuration=medium&relevanceLanguage=en&` +
+        `videoEmbeddable=true&videoSyndicated=true&key=${apiKey}`
       );
       if (!searchRes.ok) {
         const err = await searchRes.json();
@@ -146,7 +147,7 @@ export async function POST(req: NextRequest) {
     // 2단계: 영상 상세 정보 (조회수, 좋아요, 길이)
     const videoIds = allVideoIds.slice(0, 30).join(",");
     const videoRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${apiKey}`
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails,status&id=${videoIds}&key=${apiKey}`
     );
     const videoData = await videoRes.json();
 
@@ -175,10 +176,15 @@ export async function POST(req: NextRequest) {
       const durationSecs = parseDuration(video.contentDetails?.duration ?? "");
       const { daysAgo, label } = getDaysAgo(video.snippet?.publishedAt ?? "");
 
-      // 필터: 구독자 & 조회수 상한, 영어 제목
+      // 필터: 구독자 & 조회수 상한
       if (subs > maxSubs) continue;
       if (views > maxViews) continue;
       if (daysAgo > dayRange) continue;
+
+      // 필터: 임베드 불가 또는 한국 지역 제한 영상 제외
+      const embeddable = video.status?.embeddable !== false;
+      const restricted = video.contentDetails?.regionRestriction?.blocked?.includes("KR");
+      if (!embeddable || restricted) continue;
 
       const { score, grade } = scoreVideo({ views, likes, subs, daysAgo, duration: durationSecs });
 
