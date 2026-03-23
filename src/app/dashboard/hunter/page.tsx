@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Search, SlidersHorizontal, Play, Eye, ThumbsUp, Clock,
-  Download, RefreshCw, Zap, X, ExternalLink
+  Download, RefreshCw, Zap, X, ExternalLink, Youtube
 } from "lucide-react";
 
 const NICHES = ["전체", "K-먹방", "K-바비큐", "K-교통", "K-문화", "K-의료", "K-뷰티", "K-라이프", "K-쇼핑", "K-관광"];
+const STORAGE_KEY = "kcontent_hunter_videos";
 
 const MOCK_VIDEOS = [
   { id: "v1", ytId: "dCHzJIrVhWM", title: "First time trying Korean convenience store food at 4AM", channel: "NightOwlSteve", subs: "2.1K", views: "3,420", likes: "287", duration: "14:23", niche: "K-먹방", grade: "S" as const, score: 97, hasCC: true, uploadedAt: "2일 전", thumbnail: "#7c3aed", reason: "새벽 편의점 = 국내 반응 폭발 예상 · 구독자 대비 조회수 비율 이상적" },
@@ -37,49 +38,74 @@ function ScoreMeter({ score, grade }: { score: number; grade: "S" | "A" | "B" })
   );
 }
 
-// YouTube 임베드 모달
+// 영상 미리보기 모달 — YouTube 직접 연결 방식
 function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void }) {
+  const ytUrl = `https://www.youtube.com/watch?v=${video.ytId}`;
+  const thumbUrl = `https://img.youtube.com/vi/${video.ytId}/hqdefault.jpg`;
+
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 1000,
-        background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)",
-        display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.88)", backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 860, background: "var(--bg-surface)",
+        borderRadius: 16, overflow: "hidden",
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
       }}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: "100%", maxWidth: 900, background: "var(--bg-surface)",
-          borderRadius: 16, overflow: "hidden",
-          border: "1px solid var(--border-default)",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
-        }}>
-        {/* Video iframe */}
-        <div style={{ position: "relative", paddingTop: "56.25%", background: "#000" }}>
-          <iframe
-            src={`https://www.youtube.com/embed/${video.ytId}?autoplay=1&rel=0`}
-            title={video.title}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        </div>
-        {/* Info bar */}
+        {/* 썸네일 + 재생 버튼 (클릭 시 YouTube 새 탭) */}
+        <a href={ytUrl} target="_blank" rel="noopener noreferrer"
+          style={{ textDecoration: "none", display: "block", position: "relative", cursor: "pointer" }}>
+          <div style={{ position: "relative", paddingTop: "56.25%", background: "#111", overflow: "hidden" }}>
+            {/* YouTube 썸네일 (공식 URL — 항상 작동) */}
+            <img
+              src={thumbUrl}
+              alt={video.title}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.85 }}
+              onError={e => { (e.currentTarget as HTMLImageElement).style.opacity = "0"; }}
+            />
+            {/* 재생 오버레이 */}
+            <div style={{
+              position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              background: "linear-gradient(to top, rgba(0,0,0,0.6), transparent)",
+            }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: "50%",
+                background: "#ff0000", display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 4px 24px rgba(255,0,0,0.5)",
+              }}>
+                <Play size={28} color="white" fill="white" style={{ marginLeft: 4 }} />
+              </div>
+            </div>
+            {/* YouTube 로고 */}
+            <div style={{
+              position: "absolute", bottom: 12, right: 12,
+              background: "rgba(0,0,0,0.7)", borderRadius: 6, padding: "4px 10px",
+              display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "white", fontWeight: 700,
+            }}>
+              <Youtube size={14} color="#ff0000" fill="#ff0000" />
+              YouTube에서 시청
+            </div>
+          </div>
+        </a>
+
+        {/* 영상 정보 바 */}
         <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-              {video.channel} · 구독자 {video.subs} · <Eye size={11} style={{ display: "inline", verticalAlign: "middle" }} /> {video.views} · <Clock size={11} style={{ display: "inline", verticalAlign: "middle" }} /> {video.duration}
+              {video.channel} · 구독자 {video.subs} · {video.views} 조회 · {video.duration}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <a href={`https://www.youtube.com/watch?v=${video.ytId}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+            <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
               <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}>
-                <ExternalLink size={12} />YouTube에서 열기
+                <ExternalLink size={12} />YouTube 열기
               </button>
             </a>
-            <a href={`/dashboard/script?url=https://youtube.com/watch?v=${video.ytId}`} style={{ textDecoration: "none" }}>
+            <a href={`/dashboard/script?url=${encodeURIComponent(ytUrl)}`} style={{ textDecoration: "none" }}>
               <button className="btn btn-brand btn-sm" style={{ gap: 6 }}>
                 <Zap size={12} />AI 대본 생성
               </button>
@@ -102,6 +128,14 @@ export default function HunterPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [playing, setPlaying] = useState<VideoItem | null>(null);
 
+  // ✅ 페이지 로드 시 이전 수집 결과 복원
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setVideos(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
   const runScan = () => {
     setScanning(true);
     setVideos([]);
@@ -114,6 +148,8 @@ export default function HunterPage() {
         clearInterval(timer);
         setScanning(false);
         setVideos(MOCK_VIDEOS);
+        // ✅ 수집 결과 localStorage에 저장
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(MOCK_VIDEOS));
       }
     }, 80);
   };
@@ -122,10 +158,8 @@ export default function HunterPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1100 }}>
-      {/* YouTube 플레이어 모달 */}
       {playing && <VideoModal video={playing} onClose={() => setPlaying(null)} />}
 
-      {/* Header */}
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>소재 수집기</h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>구독자 적고 조회수 낮은 외국인 한국 방문 영상을 AI가 자동 발굴 · S/A/B 등급화</p>
@@ -155,7 +189,7 @@ export default function HunterPage() {
           <button className={`btn ${scanning ? "btn-ghost" : "btn-brand"}`} onClick={runScan} disabled={scanning}
             style={{ padding: "10px 24px", gap: 8, whiteSpace: "nowrap" }}>
             {scanning
-              ? <><RefreshCw size={14} className="animate-spin" /> 수집 중 {count}개...</>
+              ? <><RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} /> 수집 중 {count}개...</>
               : <><Zap size={14} /> AI 자동 수집 시작</>}
           </button>
         </div>
@@ -191,6 +225,11 @@ export default function HunterPage() {
           <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 6 }}>
             {filtered.length}개 발굴됨 (S등급: {filtered.filter(v => v.grade === "S").length}개)
           </span>
+          {/* 목록 초기화 버튼 */}
+          <button onClick={() => { setVideos([]); localStorage.removeItem(STORAGE_KEY); }}
+            style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+            초기화
+          </button>
         </div>
       )}
 
@@ -199,18 +238,19 @@ export default function HunterPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {filtered.map(v => (
             <div key={v.id} className="card" style={{ padding: 0, overflow: "hidden", transition: "all 0.2s" }}>
-              <div style={{ display: "flex", gap: 0 }} onClick={() => setSelected(selected === v.id ? null : v.id)} >
-                {/* Thumbnail — play 버튼 클릭 시 모달 오픈 */}
-                <div style={{ width: 120, flexShrink: 0, background: v.thumbnail, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", cursor: "pointer" }}
+              <div style={{ display: "flex", gap: 0 }} onClick={() => setSelected(selected === v.id ? null : v.id)}>
+                {/* Thumbnail */}
+                <div
+                  style={{ width: 120, flexShrink: 0, background: v.thumbnail, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", cursor: "pointer" }}
                   onClick={e => { e.stopPropagation(); setPlaying(v); }}>
                   <div style={{
                     width: 40, height: 40, background: "rgba(0,0,0,0.55)", borderRadius: "50%",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    backdropFilter: "blur(4px)", transition: "transform 0.15s, background 0.15s",
-                    border: "2px solid rgba(255,255,255,0.3)",
+                    backdropFilter: "blur(4px)", border: "2px solid rgba(255,255,255,0.3)",
+                    transition: "transform 0.15s, background 0.15s",
                   }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1.12)"; (e.currentTarget as HTMLDivElement).style.background = "rgba(99,102,241,0.7)"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; (e.currentTarget as HTMLDivElement).style.background = "rgba(0,0,0,0.55)"; }}>
+                    onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "scale(1.12)"; el.style.background = "rgba(255,0,0,0.7)"; }}
+                    onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "scale(1)"; el.style.background = "rgba(0,0,0,0.55)"; }}>
                     <Play size={17} color="white" fill="white" />
                   </div>
                   {!v.hasCC && (
@@ -219,6 +259,7 @@ export default function HunterPage() {
                     </div>
                   )}
                 </div>
+
                 {/* Info */}
                 <div style={{ flex: 1, padding: "14px 16px", minWidth: 0, cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 6 }}>
@@ -238,7 +279,7 @@ export default function HunterPage() {
                 </div>
               </div>
 
-              {/* Expanded: AI reason + actions */}
+              {/* Expanded */}
               {selected === v.id && (
                 <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "14px 16px", background: "var(--bg-elevated)" }}>
                   <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "flex-start" }}>
@@ -250,13 +291,13 @@ export default function HunterPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button className="btn btn-ghost btn-sm" style={{ gap: 6 }} onClick={() => setPlaying(v)}>
-                      <Play size={12} fill="currentColor" />영상 시청
+                      <Play size={12} fill="currentColor" />영상 미리보기
                     </button>
-                    <a href={`/dashboard/script?url=https://youtube.com/watch?v=${v.ytId}`} style={{ textDecoration: "none" }}>
+                    <a href={`/dashboard/script?url=${encodeURIComponent(`https://youtube.com/watch?v=${v.ytId}`)}`} style={{ textDecoration: "none" }}>
                       <button className="btn btn-brand btn-sm"><Zap size={12} />AI 대본 생성</button>
                     </a>
                     <button className="btn btn-ghost btn-sm"><Download size={12} />저장</button>
-                    <button className="btn btn-ghost btn-sm" style={{ color: "var(--text-muted)" }}>건너뛰기</button>
+                    <button className="btn btn-ghost btn-sm" style={{ color: "var(--text-muted)" }} onClick={() => setSelected(null)}>건너뛰기</button>
                   </div>
                 </div>
               )}
