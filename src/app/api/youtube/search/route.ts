@@ -11,36 +11,39 @@ function scoreVideo(video: {
 }): { score: number; grade: "S" | "A" | "B" } {
   let score = 0;
 
-  // 구독자 대비 조회수 비율 (핵심 지표 - 낮은 구독자에 높은 조회수 = 바이럴 가능성)
-  const viewSubRatio = video.subs > 0 ? video.views / video.subs : 0;
-  if (viewSubRatio > 3) score += 30;
-  else if (viewSubRatio > 1.5) score += 18;
-  else if (viewSubRatio > 0.5) score += 8;
+  // 구독자 대비 조회수 비율 (핵심 지표)
+  const viewSubRatio = video.subs > 0 ? video.views / video.subs : 1;
+  if (viewSubRatio > 2)       score += 30;
+  else if (viewSubRatio > 0.8) score += 20;
+  else if (viewSubRatio > 0.3) score += 10;
+  else                          score += 3;
 
-  // 좋아요 비율 (engagement rate)
+  // 좋아요 비율 (YouTube 평균 1~3%)
   const likeRate = video.views > 0 ? video.likes / video.views : 0;
-  if (likeRate > 0.06) score += 25;
-  else if (likeRate > 0.03) score += 15;
-  else if (likeRate > 0.01) score += 8;
+  if (likeRate > 0.04)       score += 25; // 4% 이상 = 매우 높음
+  else if (likeRate > 0.02)  score += 18; // 2% 이상 = 양호
+  else if (likeRate > 0.008) score += 10; // 0.8% 이상 = 보통
+  else                        score += 2;
 
   // 업로드 최신성
-  if (video.daysAgo <= 3) score += 20;
-  else if (video.daysAgo <= 7) score += 12;
-  else if (video.daysAgo <= 14) score += 6;
+  if (video.daysAgo <= 3)       score += 20;
+  else if (video.daysAgo <= 7)  score += 14;
+  else if (video.daysAgo <= 14) score += 7;
 
-  // 영상 길이 (10~25분이 최적)
+  // 영상 길이 (8~30분이 K-콘텐츠 최적)
   const mins = video.duration / 60;
-  if (mins >= 10 && mins <= 25) score += 15;
-  else if (mins >= 5 && mins < 10) score += 8;
-  else if (mins > 25 && mins <= 40) score += 6;
+  if (mins >= 8 && mins <= 30)        score += 15;
+  else if (mins >= 4 && mins < 8)     score += 9;
+  else if (mins > 30 && mins <= 45)   score += 7;
 
   // 구독자 수 (적을수록 발굴 가치 높음)
-  if (video.subs < 2000) score += 10;
-  else if (video.subs < 10000) score += 6;
-  else if (video.subs < 50000) score += 3;
+  if (video.subs < 3000)        score += 10;
+  else if (video.subs < 15000)  score += 6;
+  else if (video.subs < 50000)  score += 3;
 
   const finalScore = Math.min(100, Math.max(10, score));
-  const grade = finalScore >= 88 ? "S" : finalScore >= 72 ? "A" : "B";
+  // S: 72점+, A: 52점+, B: 나머지
+  const grade = finalScore >= 72 ? "S" : finalScore >= 52 ? "A" : "B";
   return { score: finalScore, grade };
 }
 
