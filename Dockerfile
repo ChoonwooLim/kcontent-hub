@@ -11,7 +11,12 @@ RUN mkdir -p public prisma
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache openssl
+
+# 시스템 의존성: openssl + ffmpeg + python3 (yt-dlp용)
+RUN apk add --no-cache openssl ffmpeg python3 py3-pip \
+ && pip3 install --break-system-packages yt-dlp \
+ && mkdir -p tmp_downloads
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3555

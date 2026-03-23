@@ -1,36 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFileSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import path from "path";
 
-/* ── 경로 설정 ─────────────────────────────────────────── */
+/* ── 바이너리 경로 자동 탐색 ─────────────────────────── */
 const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
+const isWindows = process.platform === "win32";
 
-// yt-dlp 절대경로 (pip으로 설치됨)
-const YTDLP = "C:\\Users\\choon\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\yt-dlp.EXE";
+/** which / where 명령으로 바이너리 경로 탐색 */
+function findBinary(name: string, fallbackPaths: string[]): string {
+  // 1) 시스템 PATH에서 탐색
+  try {
+    const cmd = isWindows ? `where ${name}` : `which ${name}`;
+    const result = execSync(cmd, { stdio: "pipe", timeout: 5000 }).toString().trim().split("\n")[0].trim();
+    if (result && existsSync(result)) return result;
+  } catch {}
 
-// ffmpeg 절대경로 (winget으로 설치됨)
-const FFMPEG_SEARCH_PATHS = [
-  "C:\\Users\\choon\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1-full_build\\bin\\ffmpeg.exe",
-  "C:\\Users\\choon\\AppData\\Local\\Microsoft\\WinGet\\Links\\ffmpeg.exe",
-];
-
-function findFFmpeg(): string {
-  for (const p of FFMPEG_SEARCH_PATHS) {
+  // 2) 하드코딩 폴백 경로 확인
+  for (const p of fallbackPaths) {
     if (existsSync(p)) return p;
   }
-  // glob fallback
-  const wingetBase = "C:\\Users\\choon\\AppData\\Local\\Microsoft\\WinGet\\Packages";
-  if (existsSync(wingetBase)) {
-    for (const dir of readdirSync(wingetBase)) {
-      if (dir.toLowerCase().includes("ffmpeg")) {
-        const binDir = path.join(wingetBase, dir);
-        const candidates = findFileRecursive(binDir, "ffmpeg.exe", 3);
-        if (candidates) return candidates;
-      }
+
+  // 3) Windows: 재귀 탐색 (winget 설치 경로)
+  if (isWindows) {
+    const username = process.env.USERNAME || process.env.USER || "choon";
+    const searchBases = [
+      `C:\\Users\\${username}\\AppData\\Local\\Microsoft\\WinGet\\Packages`,
+      `C:\\Users\\${username}\\AppData\\Local\\Programs\\Python`,
+    ];
+    for (const base of searchBases) {
+      if (!existsSync(base)) continue;
+      const found = findFileRecursive(base, isWindows ? `${name}.exe` : name, 5);
+      if (found) return found;
     }
   }
-  throw new Error("ffmpeg를 찾을 수 없습니다. winget install Gyan.FFmpeg 으로 설치하세요.");
+
+  throw new Error(`${name}를 찾을 수 없습니다. 설치 후 PATH에 추가하세요.`);
 }
 
 function findFileRecursive(dir: string, name: string, depth: number): string | null {
@@ -97,15 +102,18 @@ export async function POST(
     ensureTmpDir();
     cleanTmpFiles(prefix);
 
-    // 바이너리 경로 확인
-    if (!existsSync(YTDLP)) {
-      return NextResponse.json({ error: `yt-dlp를 찾을 수 없습니다: ${YTDLP}` }, { status: 500 });
+    // 바이너리 경로 자동 탐색
+    let ytdlp: string;
+    try { ytdlp = findBinary("yt-dlp", []); } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 500 });
     }
 
     let ffmpeg: string;
-    try { ffmpeg = findFFmpeg(); } catch (e) {
+    try { ffmpeg = findBinary("ffmpeg", []); } catch (e) {
       return NextResponse.json({ error: String(e) }, { status: 500 });
     }
+
+    console.log("[download] yt-dlp:", ytdlp, "| ffmpeg:", ffmpeg);
 
     const ytUrl = `https://www.youtube.com/watch?v=${ytVideoId}`;
 
@@ -121,7 +129,7 @@ export async function POST(
       }
       try {
         console.log("[download] yt-dlp 다운로드 시작:", ytUrl);
-        execFileSync(YTDLP, [
+        execFileSync(ytdlp, [
           "-f", "best[height<=1080]/best",
           "--no-check-certificates",
           "--no-warnings",
