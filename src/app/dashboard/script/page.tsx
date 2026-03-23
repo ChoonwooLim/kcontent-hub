@@ -1,173 +1,211 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
-  Link2, Cpu, Sparkles, Copy, Check, Download, ChevronRight,
-  Zap, Clock, BarChart2, Eye, MousePointer, Film
+  Link2, Sparkles, Copy, Check, Film,
+  Zap, Eye, AlertCircle, Loader, CheckCircle2
 } from "lucide-react";
 
-type GenStage = "idle" | "whisper" | "analyzing" | "scripting" | "thumbnail" | "done";
+type ScriptLine = { time: string; type: string; ko: string };
 
-const SCRIPT_LINES = [
-  { time: "00:00", ko: "🇺🇸 미국에서 온 닉이 처음으로 한국 편의점 문을 열었습니다.", type: "hook" },
-  { time: "00:12", ko: "\"이게 편의점이야?\" — 닉의 표정이 굳어집니다.", type: "reaction" },
-  { time: "00:28", ko: "한국 편의점에는 세계 어디에서도 볼 수 없는 것들이 있습니다.", type: "narration" },
-  { time: "00:45", ko: "삼각김밥, 컵라면, 구운 계란... 외국인이 충격 받는 이유를 파헤칩니다.", type: "narration" },
-  { time: "01:10", ko: "닉: \"이거 먹어도 돼요? 그냥 여기서?\" (편의점 내 취식 문화에 당황)", type: "reaction" },
-  { time: "01:34", ko: "🇰🇷 우리에겐 너무나 당연한 것들이 세계에서는 특별합니다.", type: "commentary" },
-  { time: "02:05", ko: "1+1 행사에 닉의 눈이 커집니다. \"이게 두 개 다 무료라고요?!\"", type: "reaction" },
-  { time: "02:41", ko: "세계 어느 나라도 흉내 내지 못하는 한국 편의점의 진짜 매력", type: "hook" },
-];
+type Result = {
+  videoId: string;
+  videoTitle: string;
+  channelTitle: string;
+  hasTranscript: boolean;
+  title: string;
+  thumbnailTop: string;
+  thumbnailBottom: string;
+  script: ScriptLine[];
+};
 
 const TYPE_COLOR: Record<string, string> = {
-  hook: "#f59e0b",
-  reaction: "#6366f1",
-  narration: "#10b981",
-  commentary: "#ec4899",
+  hook:        "#f59e0b",
+  reaction:    "#6366f1",
+  narration:   "#10b981",
+  commentary:  "#ec4899",
 };
-
 const TYPE_LABEL: Record<string, string> = {
-  hook: "훅",
-  reaction: "반응",
-  narration: "나레이션",
-  commentary: "해설",
+  hook: "훅", reaction: "반응", narration: "나레이션", commentary: "해설",
 };
 
-const STAGE_INFO: Record<GenStage, { label: string; pct: number }> = {
-  idle: { label: "", pct: 0 },
-  whisper: { label: "Whisper AI 음성 인식 중...", pct: 18 },
-  analyzing: { label: "GPT-4o Vision 장면 분석 중...", pct: 42 },
-  scripting: { label: "K-문화 서사 대본 작성 중...", pct: 71 },
-  thumbnail: { label: "썸네일 카피 & 제목 생성 중...", pct: 90 },
-  done: { label: "생성 완료!", pct: 100 },
-};
-
-export default function ScriptPage() {
-  const [url, setUrl] = useState("");
-  const [stage, setStage] = useState<GenStage>("idle");
-  const [scriptLines, setScriptLines] = useState<typeof SCRIPT_LINES>([]);
-  const [streamIdx, setStreamIdx] = useState(0);
+function ScriptPageInner() {
+  const searchParams = useSearchParams();
+  const [url, setUrl] = useState(searchParams.get("url") ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
-  const [title, setTitle] = useState("");
-  const [thumbCopy, setThumbCopy] = useState({ top: "", bottom: "" });
 
-  const generate = () => {
-    if (!url) setUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-    const seq: GenStage[] = ["whisper", "analyzing", "scripting", "thumbnail", "done"];
-    const delays = [0, 1600, 3200, 5200, 6800];
-    seq.forEach((s, i) => setTimeout(() => {
-      setStage(s);
-      if (s === "done") {
-        setTitle("[외국인 반응] 한국 편의점 처음 가본 미국인이 경악한 이유 (세계 최고 편의점)");
-        setThumbCopy({ top: "미국인이 한국 편의점 보고 경악한 이유", bottom: "\"이게 편의점이라고?!\"" });
-        // Stream script lines
-        let idx = 0;
-        const t = setInterval(() => {
-          setScriptLines(prev => {
-            if (idx < SCRIPT_LINES.length) {
-              idx++;
-              return SCRIPT_LINES.slice(0, idx);
-            }
-            clearInterval(t);
-            return prev;
-          });
-        }, 220);
+  // URL 파라미터가 있으면 자동으로 제목줄에 표시
+  useEffect(() => {
+    const u = searchParams.get("url");
+    if (u) setUrl(decodeURIComponent(u));
+  }, [searchParams]);
+
+  const generate = async () => {
+    if (!url.trim()) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch("/api/script/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error ?? "알 수 없는 오류가 발생했습니다.");
+        return;
       }
-    }, delays[i]));
+      setResult(data);
+    } catch (e) {
+      setError(`네트워크 오류: ${String(e)}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const isRunning = stage !== "idle" && stage !== "done";
+  const copyAll = () => {
+    if (!result) return;
+    const text = result.script.map(l => `${l.time}  [${TYPE_LABEL[l.type] ?? l.type}]  ${l.ko}`).join("\n");
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1000 }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>AI 대본 엔진</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>원본 영상 URL 입력 → Whisper 음성인식 + GPT-4o Vision → K-문화 서사 대본 자동 생성</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          YouTube URL 입력 → 실제 자막 추출 + GPT-4o → K-문화 서사 한국어 대본 자동 생성
+        </p>
       </div>
 
-      {/* Input */}
+      {/* URL 입력 */}
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div className="input-group" style={{ flex: 1 }}>
             <Link2 size={15} className="input-icon" />
-            <input className="input" value={url} onChange={e => setUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..." />
+            <input
+              className="input"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !loading && generate()}
+              placeholder="https://www.youtube.com/watch?v=..."
+            />
           </div>
-          <button className="btn btn-brand" onClick={generate} disabled={isRunning}
-            style={{ padding: "0 22px", gap: 7 }}>
-            {isRunning
-              ? <><svg width={14} height={14} viewBox="0 0 24 24" style={{ animation: "spin 0.9s linear infinite" }}><circle cx={12} cy={12} r={10} fill="none" stroke="white" strokeWidth={3} strokeDasharray="40 60" /></svg>생성 중...</>
-              : <><Sparkles size={14} /> K-문화 대본 생성</>}
+          <button
+            className="btn btn-brand"
+            onClick={generate}
+            disabled={loading || !url.trim()}
+            style={{ padding: "0 22px", gap: 7, whiteSpace: "nowrap" }}
+          >
+            {loading
+              ? <><Loader size={14} style={{ animation: "spin 0.9s linear infinite" }} />생성 중...</>
+              : <><Sparkles size={14} />K-문화 대본 생성</>}
           </button>
         </div>
         <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-muted)" }}>
           {[
-            { icon: <Zap size={11} />, text: "Whisper 음성 인식" },
-            { icon: <Eye size={11} />, text: "GPT-4o 장면 분석" },
-            { icon: <Cpu size={11} />, text: "K-문화 서사 자동 구성" },
-            { icon: <MousePointer size={11} />, text: "CTR 클릭 유도 제목 생성" },
+            { icon: <Zap size={11} />,       text: "실제 YouTube 자막 추출" },
+            { icon: <Eye size={11} />,        text: "GPT-4o 내용 분석" },
+            { icon: <Sparkles size={11} />,   text: "K-문화 서사 대본 생성" },
           ].map(({ icon, text }, i) => (
             <span key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{ color: "var(--text-muted)" }}>{icon}</span>{text}
+              {icon}{text}
             </span>
           ))}
         </div>
       </div>
 
-      {/* Progress */}
-      {stage !== "idle" && (
-        <div className="card" style={{ padding: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ fontSize: 13, color: stage === "done" ? "#34d399" : "#818cf8", fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
-              {stage !== "done" && <svg width={13} height={13} viewBox="0 0 24 24" style={{ animation: "spin 0.9s linear infinite", flexShrink: 0 }}><circle cx={12} cy={12} r={10} fill="none" stroke="currentColor" strokeWidth={3} strokeDasharray="40 60" /></svg>}
-              {STAGE_INFO[stage].label}
-            </div>
-            <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{STAGE_INFO[stage].pct}%</span>
+      {/* 로딩 */}
+      {loading && (
+        <div className="card" style={{ padding: 24, textAlign: "center" }}>
+          <Loader size={28} color="#818cf8" style={{ animation: "spin 1s linear infinite", margin: "0 auto 12px" }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            YouTube 자막 추출 + GPT-4o 대본 생성 중...
           </div>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${STAGE_INFO[stage].pct}%`, background: stage === "done" ? "var(--gradient-green)" : "var(--gradient-brand)", transition: "width 0.8s ease" }} />
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            실제 API를 호출하고 있습니다. 10~30초 소요됩니다.
           </div>
         </div>
       )}
 
-      {/* Result */}
-      {stage === "done" && (
+      {/* 에러 */}
+      {error && (
+        <div style={{
+          padding: "14px 16px", borderRadius: 10,
+          background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)",
+          display: "flex", gap: 10, alignItems: "flex-start",
+        }}>
+          <AlertCircle size={16} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 13, color: "#fca5a5", lineHeight: 1.6 }}>{error}</div>
+        </div>
+      )}
+
+      {/* 결과 */}
+      {result && (
         <>
-          {/* Auto Title */}
+          {/* 메타 정보 */}
+          <div style={{
+            padding: "10px 14px", borderRadius: 8,
+            background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)",
+            display: "flex", alignItems: "center", gap: 8, fontSize: 12,
+          }}>
+            <CheckCircle2 size={14} color="#818cf8" />
+            <span style={{ color: "#a5b4fc" }}>
+              <strong>{result.channelTitle || "알 수 없는 채널"}</strong>
+              {result.videoTitle && ` — ${result.videoTitle}`}
+            </span>
+            <span style={{ marginLeft: "auto", color: result.hasTranscript ? "#34d399" : "#fbbf24" }}>
+              {result.hasTranscript ? "✓ 실제 자막 기반" : "⚠ 자막 없음 (제목/설명 기반)"}
+            </span>
+          </div>
+
+          {/* AI 생성 제목 */}
           <div className="card" style={{ padding: 18 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
               AI 생성 제목
             </div>
-            <input className="input" defaultValue={title} style={{ fontSize: 15, fontWeight: 600 }} />
+            <input
+              className="input"
+              defaultValue={result.title}
+              style={{ fontSize: 15, fontWeight: 600 }}
+            />
           </div>
 
-          {/* Thumbnail Caption */}
+          {/* 썸네일 카피 */}
           <div className="card" style={{ padding: 18 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-              썸네일 카피 (클릭 유도)
+              썸네일 카피
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5 }}>상단 텍스트</label>
-                <input className="input" defaultValue={thumbCopy.top} />
+                <input className="input" defaultValue={result.thumbnailTop} />
               </div>
               <div>
                 <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5 }}>하단 텍스트 (임팩트)</label>
-                <input className="input" defaultValue={thumbCopy.bottom} />
+                <input className="input" defaultValue={result.thumbnailBottom} />
               </div>
             </div>
           </div>
 
-          {/* Script Timeline */}
+          {/* 자막 타임라인 */}
           <div className="card" style={{ overflow: "hidden" }}>
             <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>자막 타임라인</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>클릭하여 편집 · 시청 지속률 최적화 구조</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  GPT-4o가 생성한 {result.script.length}개 장면 · 클릭하여 편집 가능
+                </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(scriptLines.map(l => `${l.time}  ${l.ko}`).join("\n")); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
+                <button className="btn btn-ghost btn-sm" onClick={copyAll}>
                   {copied ? <><Check size={12} color="#34d399" />복사됨</> : <><Copy size={12} />전체 복사</>}
                 </button>
                 <a href="/dashboard/studio" style={{ textDecoration: "none" }}>
@@ -175,7 +213,8 @@ export default function ScriptPage() {
                 </a>
               </div>
             </div>
-            {/* Type Legend */}
+
+            {/* 범례 */}
             <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--border-subtle)", display: "flex", gap: 12, flexWrap: "wrap" }}>
               {Object.entries(TYPE_COLOR).map(([type, color]) => (
                 <span key={type} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
@@ -184,47 +223,54 @@ export default function ScriptPage() {
                 </span>
               ))}
             </div>
-            <div>
-              {scriptLines.map((line, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "72px 56px 1fr", borderBottom: "1px solid rgba(30,30,46,0.5)", transition: "background 0.2s" }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.015)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "")}>
-                  <div style={{ padding: "13px 14px", borderRight: "1px solid var(--border-subtle)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
-                    {line.time}
-                  </div>
-                  <div style={{ padding: "13px 10px", borderRight: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: TYPE_COLOR[line.type], background: TYPE_COLOR[line.type] + "18", padding: "2px 6px", borderRadius: 4, letterSpacing: "0.04em" }}>
-                      {TYPE_LABEL[line.type]}
-                    </span>
-                  </div>
-                  <div style={{ padding: "13px 16px", display: "flex", alignItems: "center" }}>
-                    <textarea defaultValue={line.ko} rows={1} style={{
-                      width: "100%", background: "transparent", border: "none", outline: "none",
-                      color: "var(--text-primary)", fontSize: 13.5, lineHeight: 1.5, resize: "none",
-                      fontFamily: "Inter, sans-serif"
-                    }} />
-                  </div>
-                </div>
-              ))}
-            </div>
 
-            {/* Estimated metrics */}
-            <div style={{ padding: "14px 18px", background: "var(--bg-elevated)", display: "flex", gap: 24, flexWrap: "wrap" }}>
-              {[
-                { label: "예상 CTR", val: "8.4%", note: "업계 평균 4.2%의 2배" },
-                { label: "예상 시청 지속률", val: "68%", note: "K-문화 평균 51% 상회" },
-                { label: "예상 CPM", val: "₩21,500", note: "교육/문화 카테고리 기준" },
-              ].map(({ label, val, note }) => (
-                <div key={label}>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>{label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: "#4ade80", fontFamily: "Outfit" }}>{val}</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{note}</div>
+            {result.script.map((line, i) => (
+              <div key={i}
+                style={{ display: "grid", gridTemplateColumns: "72px 62px 1fr", borderBottom: "1px solid rgba(30,30,46,0.5)", transition: "background 0.15s" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.015)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                <div style={{ padding: "13px 14px", borderRight: "1px solid var(--border-subtle)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
+                  {line.time}
                 </div>
-              ))}
-            </div>
+                <div style={{ padding: "13px 10px", borderRight: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: TYPE_COLOR[line.type] ?? "#aaa", background: (TYPE_COLOR[line.type] ?? "#aaa") + "18", padding: "2px 6px", borderRadius: 4, letterSpacing: "0.04em" }}>
+                    {TYPE_LABEL[line.type] ?? line.type}
+                  </span>
+                </div>
+                <div style={{ padding: "13px 16px", display: "flex", alignItems: "center" }}>
+                  <textarea
+                    defaultValue={line.ko}
+                    rows={1}
+                    style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13.5, lineHeight: 1.5, resize: "none", fontFamily: "Inter, sans-serif" }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}
+
+      {/* 초기 안내 */}
+      {!loading && !result && !error && (
+        <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)" }}>
+          <Sparkles size={36} style={{ opacity: 0.2, margin: "0 auto 12px" }} />
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>YouTube URL을 입력하세요</div>
+          <div style={{ fontSize: 13 }}>
+            OpenAI API 키가 설정 페이지에 등록되어 있어야 합니다.<br />
+            자막이 있는 영상일수록 더 정확한 대본이 생성됩니다.
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+  );
+}
+
+export default function ScriptPage() {
+  return (
+    <Suspense>
+      <ScriptPageInner />
+    </Suspense>
   );
 }
