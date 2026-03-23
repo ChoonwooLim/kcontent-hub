@@ -321,6 +321,60 @@ export default function EditorPage() {
   // stage 강제 이동
   const handleAdvance = async () => processAction("advance");
 
+  // HD 다운로드 상태
+  const [downloading, setDownloading] = useState<string | null>(null); // "merged" | clipId | null
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // HD 다운로드 핸들러
+  const handleDownload = async (mode: "single" | "merged", clip?: EditClip) => {
+    if (!selected?.ytVideoId) return;
+    const dlId = mode === "merged" ? "merged" : clip?.id || "single";
+    setDownloading(dlId);
+    setDownloadError(null);
+    try {
+      const clipsToSend = mode === "single" && clip
+        ? [{ startTime: clip.startTime, endTime: clip.endTime, label: clip.label }]
+        : (selected.editClips || []).filter(c => c.included).map(c => ({
+            startTime: c.startTime, endTime: c.endTime, label: c.label,
+          }));
+
+      const res = await fetch(`/api/pipeline/${selected.id}/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          ytVideoId: selected.ytVideoId,
+          clips: clipsToSend,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "다운로드 실패" }));
+        setDownloadError(errData.error || "다운로드 실패");
+        return;
+      }
+
+      // Blob으로 다운로드
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch ? filenameMatch[1] : `KContent_${mode}.mp4`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setDownloadError(`네트워크 오류: ${String(e)}`);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1200 }}>
       <div>
@@ -733,21 +787,92 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              {/* ── STEP 2~3: HD 저장 (정보 표시) ─────── */}
-              <div className="card" style={{ padding: "14px 16px" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-                  <span style={{ color: "#06b6d4", marginRight: 6 }}>②</span>
-                  HD 영상 저장
+              {/* ── STEP 2: HD 영상 저장 (yt-dlp + ffmpeg) ─────── */}
+              <div className="card" style={{ overflow: "hidden" }}>
+                <div style={{
+                  padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>
+                      <span style={{ color: "#06b6d4", marginRight: 6 }}>②</span>
+                      HD 영상 저장
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                      yt-dlp + FFmpeg로 선택된 클립을 HD MP4로 다운로드합니다 · {selected.editClips?.filter(c => c.included).length || 0}개 클립 / {formatDuration(totalClipSec)}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
-                  서버에서 yt-dlp + FFmpeg를 사용해 선택된 클립 구간만 다운로드 → 트림 → 결합하여 HD 영상을 생성합니다.
-                  <br />현재 {selected.editClips?.filter(c => c.included).length || 0}개 클립 / {formatDuration(totalClipSec)} 분량
+
+                <div style={{ padding: "12px 16px" }}>
+                  {/* 전체 병합 다운로드 버튼 */}
+                  <button
+                    className="btn btn-brand btn-sm"
+                    style={{
+                      gap: 6, padding: "10px 20px", fontSize: 13,
+                      background: "linear-gradient(135deg, #06b6d4, #0ea5e9)",
+                      borderColor: "#06b6d4",
+                      marginBottom: 12,
+                    }}
+                    disabled={downloading !== null || totalClipSec === 0}
+                    onClick={() => handleDownload("merged")}
+                  >
+                    {downloading === "merged" ? (
+                      <><Loader size={13} style={{ animation: "spin 0.9s linear infinite" }} />전체 영상 다운로드 중... (완료까지 수분 소요)</>
+                    ) : (
+                      <><Download size={13} />🎬 전체 클립 병합 HD 다운로드 ({selected.editClips?.filter(c => c.included).length}개 · {formatDuration(totalClipSec)})</>
+                    )}
+                  </button>
+
+                  {downloadError && (
+                    <div style={{
+                      padding: "8px 12px", borderRadius: 6, marginBottom: 10,
+                      background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)",
+                      display: "flex", gap: 8, alignItems: "center",
+                    }}>
+                      <AlertCircle size={13} color="#f87171" />
+                      <span style={{ fontSize: 12, color: "#fca5a5" }}>{downloadError}</span>
+                    </div>
+                  )}
+
+                  {/* 개별 클립 다운로드 목록 */}
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, fontWeight: 600 }}>
+                    개별 클립 다운로드
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {(selected.editClips || []).filter(c => c.included).map((clip, i) => (
+                      <div key={clip.id} style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "6px 10px", borderRadius: 6,
+                        background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+                      }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, color: "#06b6d4", width: 18,
+                          height: 18, borderRadius: "50%", background: "rgba(6,182,212,0.1)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>{i + 1}</span>
+                        <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--text-secondary)" }}>
+                          {clip.startTime} → {clip.endTime}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({Math.round(clipDuration(clip))}초)</span>
+                        {clip.label && <span className="badge badge-brand" style={{ fontSize: 9 }}>{clip.label}</span>}
+                        <div style={{ flex: 1 }} />
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: "3px 10px", fontSize: 10, gap: 4 }}
+                          disabled={downloading !== null}
+                          onClick={() => handleDownload("single", clip)}
+                        >
+                          {downloading === clip.id ? (
+                            <><Loader size={10} style={{ animation: "spin 0.9s linear infinite" }} />다운로드 중</>
+                          ) : (
+                            <><Download size={10} />MP4 저장</>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, gap: 6 }}
-                  onClick={handleAdvance}
-                  disabled={processing !== null || totalClipSec === 0}>
-                  <Download size={12} />HD 저장 단계로 이동
-                </button>
               </div>
 
               {/* ── STEP 4: 자막 추출 ─────────────────── */}
