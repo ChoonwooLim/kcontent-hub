@@ -33,14 +33,18 @@ model PipelineVideo {
   grade        String   @default("B") // "S" | "A" | "B"
   score        Int      @default(70)
   niche        String?
-  stage        String   @default("발굴 대기") // 5단계: 발굴 대기 → 대본 생성 → 편집 중 → 검수 완료 → 배포 완료
-  aiReason     String?  @db.Text
-  scriptJson   String?  @db.Text   // 생성된 타임라인 대본 JSON
-  titleKo      String?  // AI 생성 제목
-  thumbCopyTop String?
-  thumbCopyBot String?
-  hasCC        Boolean  @default(false)
-  thumbnail    String?
+  stage             String   @default("발굴 대기") // 7단계: 발굴 대기 → 요약 편집 → HD 저장 → 자막 추출 → 한글 변환 → 대본 생성 → 배포 완료
+  aiReason          String?  @db.Text
+  scriptJson        String?  @db.Text   // 생성된 타임라인 대본 JSON
+  titleKo           String?  // AI 생성 제목
+  thumbCopyTop      String?
+  thumbCopyBot      String?
+  hasCC             Boolean  @default(false)
+  thumbnail         String?
+  transcriptJson    String?  @db.Text   // Whisper 추출 원본 자막 JSON
+  translatedJson    String?  @db.Text   // 한글 변환된 자막 JSON
+  processedVideoUrl String?             // FFmpeg 처리된 HD 영상 경로/URL
+  summaryDuration   Int?                // 요약 편집 영상 길이 (초)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -67,11 +71,13 @@ model EditClip {
   id           String        @id @default(cuid())
   video        PipelineVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
   videoId      String
+  order        Int           @default(0)  // 클립 순서
   startTime    String        // "00:01:30"
   endTime      String        // "00:02:45"
   label        String?       // "훅", "반응", "나레이션" 등
   note         String?  @db.Text  // 메모
   thumbnailUrl String?       // 캡처된 프레임 URL
+  included     Boolean       @default(true) // 최종 편집에 포함 여부
   createdAt    DateTime      @default(now())
 }
 

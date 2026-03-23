@@ -3,15 +3,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
-  ChevronRight, Bell, Layers, BarChart2
+  ChevronRight, Bell, Layers, BarChart2, Scissors
 } from "lucide-react";
 
 const NAV = [
   { section: "제작 파이프라인" },
   { href: "/dashboard", label: "파이프라인 보드", icon: LayoutDashboard },
   { href: "/dashboard/hunter", label: "소재 수집기", icon: Search },
+  { href: "/dashboard/editor", label: "영상 편집기", icon: Scissors },
   { href: "/dashboard/script", label: "AI 대본 엔진", icon: Cpu },
-  { href: "/dashboard/studio", label: "편집 스튜디오", icon: Film },
+  { href: "/dashboard/studio", label: "자막 스튜디오", icon: Film },
   { href: "/dashboard/publisher", label: "멀티플랫폼 배포", icon: Globe },
   { section: "관리" },
   { href: "/dashboard/channels", label: "채널 관리", icon: Youtube },

@@ -1,0 +1,566 @@
+"use client";
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import {
+  Scissors, Plus, Trash2, ArrowRight,
+  Loader, AlertCircle, ChevronRight, Check, X, Film,
+  MessageSquare, Zap, Download
+} from "lucide-react";
+
+/* ── 타입 ─────────────────────────────────────────────── */
+type EditClip = {
+  id: string;
+  order: number;
+  startTime: string;
+  endTime: string;
+  label: string | null;
+  note: string | null;
+  included: boolean;
+};
+
+type PipelineVideo = {
+  id: string;
+  title: string;
+  channel: string;
+  ytVideoId: string | null;
+  originalUrl: string;
+  thumbnail: string | null;
+  duration: string | null;
+  views: string | null;
+  lang: string | null;
+  grade: string;
+  score: number;
+  niche: string | null;
+  stage: string;
+  hasCC: boolean;
+  transcriptJson: string | null;
+  translatedJson: string | null;
+  scriptJson: string | null;
+  titleKo: string | null;
+  summaryDuration: number | null;
+  editClips: EditClip[];
+};
+
+const STAGES = ["발굴 대기", "요약 편집", "HD 저장", "자막 추출", "한글 변환", "대본 생성", "배포 완료"];
+const STAGE_COLORS: Record<string, string> = {
+  "발굴 대기": "#52525b", "요약 편집": "#f59e0b", "HD 저장": "#06b6d4",
+  "자막 추출": "#8b5cf6", "한글 변환": "#6366f1", "대본 생성": "#10b981", "배포 완료": "#22c55e",
+};
+const CLIP_LABELS = ["훅", "반응", "하이라이트", "나레이션", "문화 설명", "엔딩"];
+
+function formatDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}분 ${s}초`;
+}
+
+function timeToSec(t: string): number {
+  const p = t.split(":").map(Number);
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  return p[0] * 60 + (p[1] || 0);
+}
+
+function clipDuration(clip: EditClip): number {
+  return timeToSec(clip.endTime) - timeToSec(clip.startTime);
+}
+
+/* ── 파이프라인 진행 스텝퍼 ────────────────────────────── */
+function PipelineStepper({ stage }: { stage: string }) {
+  const currentIdx = STAGES.indexOf(stage);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+      {STAGES.map((s, i) => (
+        <div key={s} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{
+            padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+            background: i <= currentIdx ? STAGE_COLORS[s] + "20" : "var(--bg-elevated)",
+            color: i <= currentIdx ? STAGE_COLORS[s] : "var(--text-muted)",
+            border: `1px solid ${i === currentIdx ? STAGE_COLORS[s] + "50" : "var(--border-subtle)"}`,
+            transition: "all 0.2s",
+          }}>
+            {i < currentIdx ? <Check size={10} style={{ marginRight: 3 }} /> : null}
+            {s}
+          </div>
+          {i < STAGES.length - 1 && (
+            <ChevronRight size={12} color="var(--text-muted)" style={{ opacity: 0.3 }} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── 메인 편집기 페이지 ──────────────────────────────── */
+export default function EditorPage() {
+  const [videos, setVideos] = useState<PipelineVideo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<string | null>(null); // action name
+  const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // 클립 편집 상태
+  const [newClipStart, setNewClipStart] = useState("00:00:00");
+  const [newClipEnd, setNewClipEnd] = useState("00:03:00");
+  const [newClipLabel, setNewClipLabel] = useState("하이라이트");
+
+  const fetchVideos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pipeline");
+      const data = await res.json();
+      if (data.videos) setVideos(data.videos);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchVideos(); }, [fetchVideos]);
+
+  const selected = videos.find(v => v.id === selectedId);
+  const totalClipSec = selected?.editClips
+    ?.filter(c => c.included)
+    ?.reduce((acc, c) => acc + clipDuration(c), 0) || 0;
+
+  // 클립 추가
+  const addClip = async () => {
+    if (!selectedId) return;
+    try {
+      await fetch(`/api/pipeline/${selectedId}/clips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startTime: newClipStart, endTime: newClipEnd, label: newClipLabel }),
+      });
+      fetchVideos();
+    } catch { /* ignore */ }
+  };
+
+  // 클립 삭제
+  const deleteClip = async (clipId: string) => {
+    if (!selectedId) return;
+    try {
+      await fetch(`/api/pipeline/${selectedId}/clips?clipId=${clipId}`, { method: "DELETE" });
+      fetchVideos();
+    } catch { /* ignore */ }
+  };
+
+  // 클립 토글
+  const toggleClip = async (clip: EditClip) => {
+    if (!selectedId) return;
+    try {
+      await fetch(`/api/pipeline/${selectedId}/clips`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clips: [{ id: clip.id, included: !clip.included }] }),
+      });
+      fetchVideos();
+    } catch { /* ignore */ }
+  };
+
+  // 파이프라인 처리 (자막 추출 / 한글 변환 / 대본 생성)
+  const processAction = async (action: string) => {
+    if (!selectedId) return;
+    setProcessing(action);
+    setProcessResult(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/pipeline/${selectedId}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || "처리 실패");
+        return;
+      }
+      setProcessResult({ success: true, message: data.message || "완료" });
+      fetchVideos();
+    } catch (e) {
+      setError(`네트워크 오류: ${String(e)}`);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  // stage 강제 이동
+  // stage 강제 이동
+  const handleAdvance = async () => processAction("advance");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1200 }}>
+      <div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>영상 편집기</h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          저장된 영상 선택 → 핵심 구간 클립 마킹 → 자막 추출 → 한글 변환 → AI 대본 생성 (7단계 파이프라인)
+        </p>
+      </div>
+
+      {/* 영상 목록 + 편집 패널 */}
+      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 18 }}>
+
+        {/* ── 좌측: 저장된 영상 목록 ─────────────────── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="card" style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+            <Film size={14} color="#818cf8" />
+            <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>파이프라인 영상</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{videos.length}개</span>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <Loader size={24} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="card" style={{ padding: 30, textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
+                저장된 영상이 없습니다
+              </div>
+              <Link href="/dashboard/hunter">
+                <button className="btn btn-brand btn-sm"><Scissors size={12} />소재 수집기에서 영상 저장</button>
+              </Link>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 600, overflowY: "auto" }}>
+              {videos.map(v => (
+                <div key={v.id} onClick={() => setSelectedId(v.id)}
+                  className="card" style={{
+                    padding: "10px 12px", cursor: "pointer",
+                    borderLeft: selectedId === v.id ? "3px solid #818cf8" : "3px solid transparent",
+                    background: selectedId === v.id ? "rgba(99,102,241,0.04)" : undefined,
+                    transition: "all 0.15s",
+                  }}>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {v.thumbnail && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={v.thumbnail} alt="" style={{ width: 60, height: 34, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {v.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                        {v.channel} · {v.duration || "?"}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                      background: (STAGE_COLORS[v.stage] || "#52525b") + "20",
+                      color: STAGE_COLORS[v.stage] || "#52525b",
+                    }}>
+                      {v.stage}
+                    </span>
+                    {v.niche && <span className="badge badge-gray" style={{ fontSize: 9 }}>{v.niche}</span>}
+                    {v.editClips?.length > 0 && (
+                      <span style={{ fontSize: 9, color: "#f59e0b" }}>✂ {v.editClips.length}클립</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── 우측: 편집 패널 ────────────────────────── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {!selected ? (
+            <div className="card" style={{ padding: 60, textAlign: "center" }}>
+              <Scissors size={40} style={{ opacity: 0.15, margin: "0 auto 12px" }} />
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 }}>영상을 선택하세요</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>좌측 목록에서 편집할 영상을 클릭하면 파이프라인 도구가 표시됩니다</div>
+            </div>
+          ) : (
+            <>
+              {/* 파이프라인 스텝퍼 */}
+              <div className="card" style={{ padding: "12px 16px" }}>
+                <PipelineStepper stage={selected.stage} />
+              </div>
+
+              {/* 영상 정보 + 미리보기 */}
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex" }}>
+                  {/* YouTube 임베드 */}
+                  <div style={{ width: 380, flexShrink: 0, aspectRatio: "16/9", background: "#000" }}>
+                    {selected.ytVideoId ? (
+                      <iframe
+                        src={`https://www.youtube.com/embed/${selected.ytVideoId}?rel=0`}
+                        title={selected.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        style={{ width: "100%", height: "100%", border: "none" }}
+                      />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                        영상 미리보기 불가
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: "14px 16px", flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>{selected.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+                      {selected.channel} · {selected.views || "?"} 조회 · {selected.duration || "?"} · {selected.lang?.toUpperCase() || "?"}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {selected.niche && <span className="badge badge-gray" style={{ fontSize: 10 }}>{selected.niche}</span>}
+                      <span className={`badge ${selected.grade === "S" ? "badge-amber" : selected.grade === "A" ? "badge-brand" : "badge-gray"}`} style={{ fontSize: 10 }}>
+                        {selected.grade}등급 · {selected.score}점
+                      </span>
+                      {selected.hasCC && <span className="badge badge-green" style={{ fontSize: 10 }}>CC자막</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── STEP 1: 요약 편집 (클립 마킹) ──────── */}
+              <div className="card" style={{ overflow: "hidden" }}>
+                <div style={{
+                  padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>
+                      <span style={{ color: "#f59e0b", marginRight: 6 }}>①</span>
+                      요약 편집 — 핵심 구간 클립 마킹
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                      3~5분 분량으로 핵심 구간만 선택 · 현재 {selected.editClips?.length || 0}개 클립 / {formatDuration(totalClipSec)}
+                    </div>
+                  </div>
+                  {totalClipSec >= 180 && totalClipSec <= 300 && (
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>✓ 적정 길이</span>
+                  )}
+                  {totalClipSec > 0 && totalClipSec < 180 && (
+                    <span className="badge badge-amber" style={{ fontSize: 10 }}>⚠ 너무 짧음</span>
+                  )}
+                  {totalClipSec > 300 && (
+                    <span className="badge badge-red" style={{ fontSize: 10 }}>⚠ 5분 초과</span>
+                  )}
+                </div>
+
+                {/* 클립 목록 */}
+                <div style={{ padding: "10px 16px" }}>
+                  {(selected.editClips || []).map((clip, i) => (
+                    <div key={clip.id} style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
+                      borderBottom: "1px solid var(--border-subtle)",
+                      opacity: clip.included ? 1 : 0.4,
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", width: 18 }}>{i + 1}</span>
+                      <span style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--text-secondary)" }}>
+                        {clip.startTime} → {clip.endTime}
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({Math.round(clipDuration(clip))}초)</span>
+                       {clip.label && (
+                        <span className="badge badge-brand" style={{ fontSize: 9 }}>{clip.label}</span>
+                      )}
+                      <div style={{ flex: 1 }} />
+                      <button className="btn btn-ghost btn-sm" style={{ padding: "3px 8px", fontSize: 10 }}
+                        onClick={() => toggleClip(clip)}>
+                        {clip.included ? "제외" : "포함"}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: "3px 6px" }}
+                        onClick={() => deleteClip(clip.id)}>
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* 새 클립 추가 */}
+                  <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                    <input className="input" value={newClipStart} onChange={e => setNewClipStart(e.target.value)}
+                      placeholder="시작" style={{ width: 90, fontSize: 12, fontFamily: "JetBrains Mono" }} />
+                    <ArrowRight size={12} color="var(--text-muted)" />
+                    <input className="input" value={newClipEnd} onChange={e => setNewClipEnd(e.target.value)}
+                      placeholder="끝" style={{ width: 90, fontSize: 12, fontFamily: "JetBrains Mono" }} />
+                    <select className="input" value={newClipLabel} onChange={e => setNewClipLabel(e.target.value)}
+                      style={{ width: 100, fontSize: 12 }}>
+                      {CLIP_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                    <button className="btn btn-brand btn-sm" onClick={addClip} style={{ gap: 4, whiteSpace: "nowrap" }}>
+                      <Plus size={12} />클립 추가
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── STEP 2~3: HD 저장 (정보 표시) ─────── */}
+              <div className="card" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                  <span style={{ color: "#06b6d4", marginRight: 6 }}>②</span>
+                  HD 영상 저장
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                  서버에서 yt-dlp + FFmpeg를 사용해 선택된 클립 구간만 다운로드 → 트림 → 결합하여 HD 영상을 생성합니다.
+                  <br />현재 {selected.editClips?.filter(c => c.included).length || 0}개 클립 / {formatDuration(totalClipSec)} 분량
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, gap: 6 }}
+                  onClick={handleAdvance}
+                  disabled={processing !== null || totalClipSec === 0}>
+                  <Download size={12} />HD 저장 단계로 이동
+                </button>
+              </div>
+
+              {/* ── STEP 4: 자막 추출 ─────────────────── */}
+              <div className="card" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                  <span style={{ color: "#8b5cf6", marginRight: 6 }}>③</span>
+                  자막 / 보이스 추출
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.6 }}>
+                  YouTube 자막(CC)을 추출합니다. 클립 구간에 맞는 자막만 필터링됩니다.
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button className="btn btn-brand btn-sm" style={{ gap: 6 }}
+                    onClick={() => processAction("transcribe")}
+                    disabled={processing !== null}>
+                    {processing === "transcribe" ? (
+                      <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />추출 중...</>
+                    ) : (
+                      <><MessageSquare size={12} />자막 추출 시작</>
+                    )}
+                  </button>
+                  {selected.transcriptJson && (
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>
+                      ✓ {JSON.parse(selected.transcriptJson).length}개 세그먼트 추출됨
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── STEP 5: 한글 변환 ─────────────────── */}
+              <div className="card" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                  <span style={{ color: "#6366f1", marginRight: 6 }}>④</span>
+                  한글 자막 변환
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.6 }}>
+                  GPT-4o로 추출된 자막을 자연스러운 한국어로 번역합니다. 타임스탬프가 유지됩니다.
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button className="btn btn-brand btn-sm" style={{ gap: 6 }}
+                    onClick={() => processAction("translate")}
+                    disabled={processing !== null || !selected.transcriptJson}>
+                    {processing === "translate" ? (
+                      <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />변환 중...</>
+                    ) : (
+                      <><Zap size={12} />한글 변환 시작</>
+                    )}
+                  </button>
+                  {selected.translatedJson && (
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>
+                      ✓ {JSON.parse(selected.translatedJson).length}개 자막 번역 완료
+                    </span>
+                  )}
+                </div>
+
+                {/* 한글 자막 미리보기 */}
+                {selected.translatedJson && (
+                  <div style={{ marginTop: 10, maxHeight: 200, overflowY: "auto", borderRadius: 8, background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
+                    {(JSON.parse(selected.translatedJson) as { time: string; original: string; ko: string }[]).slice(0, 15).map((seg, i) => (
+                      <div key={i} style={{ display: "flex", padding: "6px 10px", borderBottom: "1px solid var(--border-subtle)", gap: 10 }}>
+                        <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: "var(--text-muted)", width: 50, flexShrink: 0 }}>{seg.time}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>{seg.original}</div>
+                          <div style={{ fontSize: 12, color: "#818cf8", fontWeight: 500 }}>{seg.ko}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── STEP 6: AI 대본 생성 ──────────────── */}
+              <div className="card" style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                  <span style={{ color: "#10b981", marginRight: 6 }}>⑤</span>
+                  AI 대본 생성
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.6 }}>
+                  한글 자막을 바탕으로 K-문화 서사 대본을 GPT-4o로 자동 생성합니다. 훅 → 반응 → 나레이션 → 해설 구조.
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button className="btn btn-brand btn-sm" style={{ gap: 6 }}
+                    onClick={() => processAction("generate_script")}
+                    disabled={processing !== null || !selected.translatedJson}>
+                    {processing === "generate_script" ? (
+                      <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />생성 중...</>
+                    ) : (
+                      <><Zap size={12} />AI 대본 생성</>
+                    )}
+                  </button>
+                  {selected.scriptJson && (
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>
+                      ✓ {JSON.parse(selected.scriptJson).length}씬 대본 완료
+                    </span>
+                  )}
+                  {selected.titleKo && (
+                    <span style={{ fontSize: 12, color: "#10b981", fontWeight: 600 }}>
+                      {selected.titleKo}
+                    </span>
+                  )}
+                </div>
+
+                {/* 대본 미리보기 */}
+                {selected.scriptJson && (
+                  <div style={{ marginTop: 10, maxHeight: 200, overflowY: "auto", borderRadius: 8, background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
+                    {(JSON.parse(selected.scriptJson) as { time: string; type: string; ko: string }[]).map((scene, i) => (
+                      <div key={i} style={{ display: "flex", padding: "6px 10px", borderBottom: "1px solid var(--border-subtle)", gap: 10 }}>
+                        <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: "var(--text-muted)", width: 50, flexShrink: 0 }}>{scene.time}</span>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, flexShrink: 0,
+                          color: scene.type === "hook" ? "#f59e0b" : scene.type === "reaction" ? "#6366f1" : scene.type === "narration" ? "#10b981" : "#ec4899",
+                          background: scene.type === "hook" ? "#f59e0b18" : scene.type === "reaction" ? "#6366f118" : scene.type === "narration" ? "#10b98118" : "#ec489918",
+                        }}>
+                          {scene.type}
+                        </span>
+                        <div style={{ fontSize: 12, color: "var(--text-primary)", flex: 1 }}>{scene.ko}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 자막 스튜디오 연동 */}
+                {selected.scriptJson && (
+                  <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                    <Link href="/dashboard/studio">
+                      <button className="btn btn-brand btn-sm" onClick={() => {
+                        sessionStorage.setItem("studio_data", JSON.stringify({
+                          videoId: selected.ytVideoId,
+                          videoTitle: selected.title,
+                          channelTitle: selected.channel,
+                          title: selected.titleKo || selected.title,
+                          thumbnailTop: "",
+                          thumbnailBottom: "",
+                          script: JSON.parse(selected.scriptJson || "[]"),
+                        }));
+                      }} style={{ gap: 6 }}>
+                        <Film size={12} />자막 스튜디오로 이동
+                      </button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* 에러/성공 메시지 */}
+              {error && (
+                <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <AlertCircle size={15} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ fontSize: 13, color: "#fca5a5" }}>{error}</div>
+                  <button style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#f87171" }} onClick={() => setError(null)}><X size={12} /></button>
+                </div>
+              )}
+              {processResult?.success && (
+                <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.25)", display: "flex", gap: 10, alignItems: "center" }}>
+                  <Check size={15} color="#34d399" />
+                  <div style={{ fontSize: 13, color: "#6ee7b7" }}>{processResult.message}</div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}

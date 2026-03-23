@@ -2,12 +2,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  Search, Cpu, Film, Globe, ArrowRight, TrendingUp,
-  Clock, CheckCircle, AlertCircle, Loader, MoreHorizontal,
-  Youtube, Play, Star
+  Search, Cpu, TrendingUp,
+  CheckCircle, Scissors, MessageSquare, Zap, Download, Play
 } from "lucide-react";
 
-type Stage = "발굴 대기" | "AI 대본 생성" | "편집 중" | "업로드 대기" | "배포 완료";
+type Stage = "발굴 대기" | "요약 편집" | "HD 저장" | "자막 추출" | "한글 변환" | "대본 생성" | "배포 완료";
 
 type VideoItem = {
   id: string;
@@ -23,23 +22,25 @@ type VideoItem = {
 };
 
 const INIT_ITEMS: VideoItem[] = [
-  { id: "1", title: "한국 편의점 처음 가본 미국인 반응 브이로그", channel: "Jake in Seoul", views: "3.2K", grade: "S", stage: "편집 중", niche: "K-먹방", color: "#ef4444", score: 94, addedAt: "방금 전" },
-  { id: "2", title: "Korean BBQ is LIFE changing - first time experience", channel: "TravelGirlMia", views: "8.1K", grade: "S", stage: "AI 대본 생성", niche: "K-바비큐", color: "#6366f1", score: 91, addedAt: "10분 전" },
+  { id: "1", title: "한국 편의점 처음 가본 미국인 반응 브이로그", channel: "Jake in Seoul", views: "3.2K", grade: "S", stage: "자막 추출", niche: "K-먹방", color: "#ef4444", score: 94, addedAt: "방금 전" },
+  { id: "2", title: "Korean BBQ is LIFE changing - first time experience", channel: "TravelGirlMia", views: "8.1K", grade: "S", stage: "요약 편집", niche: "K-바비큐", color: "#6366f1", score: 91, addedAt: "10분 전" },
   { id: "3", title: "Seoul subway system shocked me (SO CLEAN)", channel: "EuroTraveler", views: "5.4K", grade: "A", stage: "발굴 대기", niche: "K-교통", color: "#10b981", score: 82, addedAt: "23분 전" },
   { id: "4", title: "Trying all Korean street food in Myeongdong!", channel: "FoodieAlex", views: "12.7K", grade: "A", stage: "발굴 대기", niche: "K-먹방", color: "#f59e0b", score: 78, addedAt: "1시간 전" },
-  { id: "5", title: "Korean hospital visit experience as a foreigner", channel: "NomadNick", views: "2.1K", grade: "S", stage: "업로드 대기", niche: "K-의료", color: "#a855f7", score: 96, addedAt: "2시간 전" },
+  { id: "5", title: "Korean hospital visit experience as a foreigner", channel: "NomadNick", views: "2.1K", grade: "S", stage: "대본 생성", niche: "K-의료", color: "#a855f7", score: 96, addedAt: "2시간 전" },
   { id: "6", title: "I moved to Korea for 30 days - honest review", channel: "LifeInAsia", views: "18.3K", grade: "B", stage: "배포 완료", niche: "K-라이프", color: "#06b6d4", score: 71, addedAt: "어제" },
-  { id: "7", title: "Jjimjilbang overnight stay - Korean spa 찜질방", channel: "WanderWendy", views: "4.9K", grade: "A", stage: "AI 대본 생성", niche: "K-문화", color: "#ec4899", score: 85, addedAt: "3시간 전" },
+  { id: "7", title: "Jjimjilbang overnight stay - Korean spa 찜질방", channel: "WanderWendy", views: "4.9K", grade: "A", stage: "한글 변환", niche: "K-문화", color: "#ec4899", score: 85, addedAt: "3시간 전" },
   { id: "8", title: "Korean drinking culture surprised me (Hof bar)", channel: "BerlinKorean", views: "6.6K", grade: "S", stage: "배포 완료", niche: "K-바", color: "#f97316", score: 89, addedAt: "어제" },
 ];
 
-const STAGES: Stage[] = ["발굴 대기", "AI 대본 생성", "편집 중", "업로드 대기", "배포 완료"];
+const STAGES: Stage[] = ["발굴 대기", "요약 편집", "HD 저장", "자막 추출", "한글 변환", "대본 생성", "배포 완료"];
 
 const STAGE_META: Record<Stage, { color: string; icon: React.ReactNode; badge: string }> = {
   "발굴 대기": { color: "#52525b", icon: <Search size={13} />, badge: "badge-gray" },
-  "AI 대본 생성": { color: "#6366f1", icon: <Cpu size={13} />, badge: "badge-brand" },
-  "편집 중": { color: "#10b981", icon: <Film size={13} />, badge: "badge-green" },
-  "업로드 대기": { color: "#f59e0b", icon: <Clock size={13} />, badge: "badge-amber" },
+  "요약 편집": { color: "#f59e0b", icon: <Scissors size={13} />, badge: "badge-amber" },
+  "HD 저장": { color: "#06b6d4", icon: <Download size={13} />, badge: "badge-cyan" },
+  "자막 추출": { color: "#8b5cf6", icon: <MessageSquare size={13} />, badge: "badge-brand" },
+  "한글 변환": { color: "#6366f1", icon: <Zap size={13} />, badge: "badge-brand" },
+  "대본 생성": { color: "#10b981", icon: <Cpu size={13} />, badge: "badge-green" },
   "배포 완료": { color: "#22c55e", icon: <CheckCircle size={13} />, badge: "badge-green" },
 };
 
@@ -66,12 +67,12 @@ function KanbanCard({ item }: { item: VideoItem }) {
         </span>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{item.addedAt}</span>
       </div>
-      {item.stage === "AI 대본 생성" && (
+      {item.stage === "요약 편집" && (
         <div style={{ marginTop: 8 }}>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: "65%", background: "var(--gradient-brand)" }} />
           </div>
-          <div style={{ fontSize: 10, color: "#6366f1", marginTop: 3 }}>대본 생성 중 65%...</div>
+          <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 3 }}>클립 편집 중 65%...</div>
         </div>
       )}
     </div>
@@ -107,7 +108,7 @@ export default function DashboardPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
         {[
           { label: "오늘 배포 완료", val: `${completedToday}개`, color: "#10b981", sub: "목표 5개" },
-          { label: "AI 대본 생성 중", val: "2개", color: "#6366f1", sub: "평균 3분" },
+          { label: "AI 대본 생성 중", val: "2개", color: "#10b981", sub: "평균 3분" },
           { label: "S등급 발굴", val: `${sGrade}개`, color: "#f59e0b", sub: "이번 주" },
           { label: "이번 달 총 AdSense", val: "₩2.34M", color: "#22c55e", sub: "+23% ↑" },
         ].map(({ label, val, color, sub }) => (
