@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// API 키 저장 (사용자별)
+model ApiKey {
+  id        String   @id @default(cuid())
+  service   String   @unique // "youtube" | "openai" | "deepl" | "tiktok"
+  value     String
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 파이프라인 영상 (소재수집 → 배포 전 과정)
+model PipelineVideo {
+  id           String   @id @default(cuid())
+  title        String
+  channel      String
+  originalUrl  String
+  views        String?
+  grade        String   @default("B") // "S" | "A" | "B"
+  score        Int      @default(70)
+  niche        String?
+  stage        String   @default("발굴 대기") // 5단계 중 하나
+  aiReason     String?  @db.Text
+  scriptJson   String?  @db.Text   // 생성된 타임라인 대본 JSON
+  titleKo      String?  // AI 생성 제목
+  thumbCopyTop String?
+  thumbCopyBot String?
+  hasCC        Boolean  @default(false)
+  thumbnail    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  publishes    PublishRecord[]
+}
+
+// 배포 기록
+model PublishRecord {
+  id         String        @id @default(cuid())
+  video      PipelineVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId    String
+  platform   String        // "youtube" | "shorts" | "tiktok" | "reels"
+  platformId String?       // 업로드 후 받은 플랫폼 영상 ID
+  status     String        @default("pending") // "pending" | "uploaded" | "failed"
+  publishedAt DateTime?
+  createdAt  DateTime      @default(now())
+}
+
+// 연동된 유튜브 채널
+model Channel {
+  id          String   @id @default(cuid())
+  platform    String   // "youtube" | "tiktok" | "instagram"
+  handle      String
+  channelId   String?
+  accessToken String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
