@@ -6,13 +6,26 @@ import {
 } from "lucide-react";
 
 const NICHES = ["전체", "K-먹방", "K-바비큐", "K-교통", "K-문화", "K-의료", "K-뷰티", "K-라이프", "K-쇼핑", "K-관광"];
+const LANGS = [
+  { code: "all", label: "🌐 전체 언어" },
+  { code: "en",  label: "🇺🇸 English" },
+  { code: "ja",  label: "🇯🇵 日本語" },
+  { code: "es",  label: "🇪🇸 Español" },
+  { code: "fr",  label: "🇫🇷 Français" },
+  { code: "de",  label: "🇩🇪 Deutsch" },
+  { code: "th",  label: "🇹🇭 ไทย" },
+  { code: "pt",  label: "🇧🇷 Português" },
+  { code: "vi",  label: "🇻🇳 Tiếng Việt" },
+  { code: "zh",  label: "🇨🇳 中文" },
+  { code: "id",  label: "🇮🇩 Bahasa" },
+];
 const STORAGE_KEY = "kcontent_hunter_videos";
 
 type VideoItem = {
   id: string; ytId: string; title: string; channel: string;
   subs: string; views: string; likes: string; duration: string;
   niche: string; grade: "S" | "A" | "B"; score: number;
-  hasCC: boolean; uploadedAt: string;
+  hasCC: boolean; lang?: string; uploadedAt: string;
   thumbnail: string; thumbnailFallback: string; reason: string;
 };
 
@@ -85,6 +98,7 @@ export default function HunterPage() {
   const [maxSubs, setMaxSubs] = useState("50000");
   const [maxViews, setMaxViews] = useState("20000");
   const [dayRange, setDayRange] = useState("7");
+  const [searchLang, setSearchLang] = useState("all");
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoItem[]>(() => {
@@ -108,6 +122,7 @@ export default function HunterPage() {
           maxViews: parseInt(maxViews),
           dayRange: parseInt(dayRange),
           niche: selectedNiche,
+          lang: searchLang,
         }),
       });
       const data = await res.json();
@@ -132,12 +147,12 @@ export default function HunterPage() {
 
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>소재 수집기</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>구독자 적고 조회수 낮은 외국인 한국 방문 영상을 YouTube API로 실시간 발굴 · S/A/B 등급화</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>전세계 외국인이 한국을 방문한 영상을 YouTube API로 실시간 발굴 · 한국어 영상 자동 제외 · S/A/B 등급화</p>
       </div>
 
       {/* Config Panel */}
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
           <div>
             <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>구독자 상한</label>
             <select className="input" style={{ cursor: "pointer" }} value={maxSubs} onChange={e => setMaxSubs(e.target.value)}>
@@ -162,6 +177,14 @@ export default function HunterPage() {
               <option value="7">최근 7일</option>
               <option value="14">최근 14일</option>
               <option value="30">최근 30일</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>언어</label>
+            <select className="input" style={{ cursor: "pointer" }} value={searchLang} onChange={e => setSearchLang(e.target.value)}>
+              {LANGS.map(l => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
             </select>
           </div>
           <button className={`btn ${scanning ? "btn-ghost" : "btn-brand"}`} onClick={runScan} disabled={scanning}
@@ -269,6 +292,9 @@ export default function HunterPage() {
                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={12} />{v.duration}</span>
                     <span>{v.uploadedAt}</span>
                     <span className="badge badge-gray" style={{ fontSize: 10 }}>{v.niche}</span>
+                    {v.lang && v.lang !== "unknown" && (
+                      <span className="badge badge-cyan" style={{ fontSize: 9 }}>{v.lang.toUpperCase()}</span>
+                    )}
                   </div>
                 </div>
               </div>

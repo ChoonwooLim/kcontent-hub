@@ -63,3 +63,19 @@ model Channel {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// 생성된 AI 대본 저장
+model Script {
+  id             String   @id @default(cuid())
+  videoId        String               // YouTube 영상 ID
+  videoTitle     String               // 원본 영상 제목
+  channelTitle   String?              // 원본 채널명
+  hasTranscript  Boolean  @default(false) // 실제 자막 기반 여부
+  title          String               // AI 생성 제목
+  thumbnailTop   String?              // 썸네일 상단 카피
+  thumbnailBottom String?             // 썸네일 하단 카피
+  scriptJson     String   @db.Text    // ScriptLine[] JSON
+  sceneCount     Int      @default(0) // 씬 수
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
