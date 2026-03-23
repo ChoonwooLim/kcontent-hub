@@ -20,9 +20,9 @@ export async function GET() {
       },
     });
     return NextResponse.json({ scripts });
-  } catch {
-    // DB 연결 실패 시 빈 배열 반환 (로컬 개발 환경)
-    return NextResponse.json({ scripts: [] });
+  } catch (err) {
+    // DB 연결 실패 시 빈 배열 + 에러 정보
+    return NextResponse.json({ scripts: [], dbError: String(err) });
   }
 }
 
