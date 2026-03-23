@@ -437,12 +437,16 @@ function ScriptPageInner() {
 
   // 저장된 대본 목록
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
-  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [loadingSaved, setLoadingSaved] = useState(true); // 초기 로딩 true
   const [loadingScript, setLoadingScript] = useState<string | null>(null);
 
-  // 페이지 진입 시 저장된 대본 목록 로드
+  // 페이지 진입 시 저장된 대본 목록 로드 (1회만)
   useEffect(() => {
     fetchSavedScripts();
+  }, []);
+
+  // URL 파라미터 처리
+  useEffect(() => {
     const u = searchParams.get("url");
     if (u) setUrl(decodeURIComponent(u));
   }, [searchParams]);
@@ -454,8 +458,12 @@ function ScriptPageInner() {
       const data = await res.json();
       if (res.ok && data.scripts) {
         setSavedScripts(data.scripts);
+      } else {
+        console.warn("[Script] API 응답 이상:", data);
       }
-    } catch { /* 무시 */ }
+    } catch (err) {
+      console.error("[Script] 대본 목록 로드 실패:", err);
+    }
     finally { setLoadingSaved(false); }
   };
 
