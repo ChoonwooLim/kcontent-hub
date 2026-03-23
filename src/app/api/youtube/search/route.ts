@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     if (!apiKey) {
       try {
         const record = await prisma.apiKey.findUnique({ where: { service: "youtube" } });
-        apiKey = record?.keyValue ?? undefined;
+        apiKey = record?.value ?? undefined;
       } catch { /* prisma not connected */ }
     }
 
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
         id: video.id,
         ytId: video.id,
         title: video.snippet?.title ?? "",
-        channel: ch.name || video.snippet?.channelTitle ?? "",
+        channel: ch.name || (video.snippet?.channelTitle ?? ""),
         subs: formatCount(subs),
         subsRaw: subs,
         views: formatCount(views),
