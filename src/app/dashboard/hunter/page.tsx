@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search, SlidersHorizontal, Play, Eye, ThumbsUp, Clock,
   Download, RefreshCw, Zap, X, ExternalLink, AlertCircle,
-  Check, Copy, BookmarkCheck, Loader, Mail, MessageSquare
+  Check, Copy, BookmarkCheck, Loader, Mail, MessageSquare, Scissors
 } from "lucide-react";
 
 const NICHES = ["전체", "K-먹방", "K-바비큐", "K-교통", "K-문화", "K-의료", "K-뷰티", "K-라이프", "K-쇼핑", "K-관광"];
@@ -82,6 +83,9 @@ function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void 
           <div style={{ display: "flex", gap: 7, flexShrink: 0 }}>
             <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
               <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}><ExternalLink size={12} />YouTube</button>
+            </a>
+            <a href={`/dashboard/editor?saveYtId=${video.ytId}`} style={{ textDecoration: "none" }}>
+              <button className="btn btn-brand btn-sm" style={{ gap: 6, background: "linear-gradient(135deg, #f59e0b, #f97316)", borderColor: "#f59e0b" }}><Scissors size={12} />영상요약편집</button>
             </a>
             <a href={`/dashboard/script?url=${encodeURIComponent(ytUrl)}`} style={{ textDecoration: "none" }}>
               <button className="btn btn-brand btn-sm" style={{ gap: 6 }}><Zap size={12} />AI 대본 생성</button>
@@ -225,6 +229,7 @@ function OutreachModal({ data, onClose }: { data: OutreachData; onClose: () => v
 }
 
 export default function HunterPage() {
+  const router = useRouter();
   const [selectedNiche, setSelectedNiche] = useState("전체");
   const [maxSubs, setMaxSubs] = useState("50000");
   const [maxViews, setMaxViews] = useState("20000");
@@ -294,6 +299,48 @@ export default function HunterPage() {
           ytUrl,
         });
       }
+    } catch (e) {
+      setSaveError(`네트워크 오류: ${String(e)}`);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // 영상요약편집 — 저장 후 편집기로 이동
+  const handleSaveAndEdit = async (v: VideoItem) => {
+    setSavingId(v.id);
+    setSaveError(null);
+    try {
+      const ytUrl = `https://www.youtube.com/watch?v=${v.ytId}`;
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: v.title,
+          channel: v.channel,
+          originalUrl: ytUrl,
+          ytVideoId: v.ytId,
+          views: v.views,
+          likes: v.likes,
+          duration: v.duration,
+          subs: v.subs,
+          lang: v.lang || "unknown",
+          grade: v.grade,
+          score: v.score,
+          niche: v.niche,
+          aiReason: v.reason,
+          hasCC: v.hasCC,
+          thumbnail: v.thumbnail,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveError(data.error || "저장에 실패했습니다.");
+        return;
+      }
+      setSavedIds(prev => new Set(prev).add(v.id));
+      // 편집기로 이동
+      router.push("/dashboard/editor");
     } catch (e) {
       setSaveError(`네트워크 오류: ${String(e)}`);
     } finally {
@@ -504,6 +551,18 @@ export default function HunterPage() {
                   <div style={{ display: "flex", gap: 8 }}>
                     <button className="btn btn-ghost btn-sm" style={{ gap: 6 }} onClick={() => setPlaying(v)}>
                       <Play size={12} fill="currentColor" />영상 미리보기
+                    </button>
+                    <button
+                      className="btn btn-brand btn-sm"
+                      style={{ gap: 6, background: "linear-gradient(135deg, #f59e0b, #f97316)", borderColor: "#f59e0b" }}
+                      disabled={savingId === v.id}
+                      onClick={(e) => { e.stopPropagation(); handleSaveAndEdit(v); }}
+                    >
+                      {savingId === v.id ? (
+                        <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />등록 중...</>
+                      ) : (
+                        <><Scissors size={12} />영상요약편집</>
+                      )}
                     </button>
                     <a href={`/dashboard/script?url=${encodeURIComponent(`https://youtube.com/watch?v=${v.ytId}`)}`} style={{ textDecoration: "none" }}>
                       <button className="btn btn-brand btn-sm"><Zap size={12} />AI 대본 생성</button>

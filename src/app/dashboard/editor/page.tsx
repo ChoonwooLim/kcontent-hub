@@ -104,6 +104,15 @@ export default function EditorPage() {
   const [newClipEnd, setNewClipEnd] = useState("00:03:00");
   const [newClipLabel, setNewClipLabel] = useState("하이라이트");
 
+  // AI 분석 결과
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+  // 인라인 클립 편집
+  const [editingClipId, setEditingClipId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [editLabel, setEditLabel] = useState("하이라이트");
+
   const fetchVideos = useCallback(async () => {
     try {
       const res = await fetch("/api/pipeline");
@@ -155,7 +164,7 @@ export default function EditorPage() {
     } catch { /* ignore */ }
   };
 
-  // 파이프라인 처리 (자막 추출 / 한글 변환 / 대본 생성)
+  // 파이프라인 처리 (AI 분석 / 자막 추출 / 한글 변환 / 대본 생성)
   const processAction = async (action: string) => {
     if (!selectedId) return;
     setProcessing(action);
@@ -173,6 +182,10 @@ export default function EditorPage() {
         return;
       }
       setProcessResult({ success: true, message: data.message || "완료" });
+      // AI 분석 결과 요약 캡처
+      if (action === "analyze_clips" && data.summary) {
+        setAiSummary(data.summary);
+      }
       fetchVideos();
     } catch (e) {
       setError(`네트워크 오류: ${String(e)}`);
@@ -181,7 +194,6 @@ export default function EditorPage() {
     }
   };
 
-  // stage 강제 이동
   // stage 강제 이동
   const handleAdvance = async () => processAction("advance");
 
@@ -311,7 +323,7 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              {/* ── STEP 1: 요약 편집 (클립 마킹) ──────── */}
+              {/* ── STEP 1: 요약 편집 (AI 자동 분석 + 수동 편집) ──────── */}
               <div className="card" style={{ overflow: "hidden" }}>
                 <div style={{
                   padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)",
@@ -320,64 +332,227 @@ export default function EditorPage() {
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>
                       <span style={{ color: "#f59e0b", marginRight: 6 }}>①</span>
-                      요약 편집 — 핵심 구간 클립 마킹
+                      요약 편집 — AI 자동 분석 + 수동 편집
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                      3~5분 분량으로 핵심 구간만 선택 · 현재 {selected.editClips?.length || 0}개 클립 / {formatDuration(totalClipSec)}
+                      AI가 전체 영상을 분석하여 구독자가 좋아할 핵심 구간을 선별합니다 · 현재 {selected.editClips?.filter(c => c.included).length || 0}개 클립 / {formatDuration(totalClipSec)}
                     </div>
                   </div>
-                  {totalClipSec >= 180 && totalClipSec <= 300 && (
-                    <span className="badge badge-green" style={{ fontSize: 10 }}>✓ 적정 길이</span>
-                  )}
-                  {totalClipSec > 0 && totalClipSec < 180 && (
-                    <span className="badge badge-amber" style={{ fontSize: 10 }}>⚠ 너무 짧음</span>
-                  )}
-                  {totalClipSec > 300 && (
-                    <span className="badge badge-red" style={{ fontSize: 10 }}>⚠ 5분 초과</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {totalClipSec >= 180 && totalClipSec <= 300 && (
+                      <span className="badge badge-green" style={{ fontSize: 10 }}>✓ 적정 길이</span>
+                    )}
+                    {totalClipSec > 0 && totalClipSec < 180 && (
+                      <span className="badge badge-amber" style={{ fontSize: 10 }}>⚠ 너무 짧음</span>
+                    )}
+                    {totalClipSec > 300 && (
+                      <span className="badge badge-red" style={{ fontSize: 10 }}>⚠ 5분 초과</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* AI 분석 버튼 + 요약 */}
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)", background: "rgba(99,102,241,0.02)" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <button className="btn btn-brand btn-sm" style={{ gap: 6, padding: "8px 16px" }}
+                      onClick={() => processAction("analyze_clips")}
+                      disabled={processing !== null}>
+                      {processing === "analyze_clips" ? (
+                        <><Loader size={13} style={{ animation: "spin 0.9s linear infinite" }} />AI 분석 중...</>
+                      ) : (
+                        <><Zap size={13} />AI 자동 분석</>
+                      )}
+                    </button>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      전체 영상 자막을 GPT-4o로 분석하여 핵심 구간을 자동 선별합니다
+                    </span>
+                  </div>
+
+                  {/* AI 분석 결과 요약 */}
+                  {aiSummary && (
+                    <div style={{
+                      marginTop: 10, padding: "10px 12px", borderRadius: 8,
+                      background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)",
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#818cf8", marginBottom: 4 }}>🤖 AI 분석 결과</div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>{aiSummary}</div>
+                    </div>
                   )}
                 </div>
 
-                {/* 클립 목록 */}
-                <div style={{ padding: "10px 16px" }}>
+                {/* 클립 목록 (AI 추천 이유 포함) */}
+                <div style={{ padding: "8px 16px" }}>
+                  {(selected.editClips || []).length > 0 && (
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, padding: "4px 0 8px", borderBottom: "1px solid var(--border-subtle)" }}>
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "3px 8px" }}
+                        onClick={async () => {
+                          if (!selectedId) return;
+                          const allIncluded = selected.editClips.every(c => c.included);
+                          await fetch(`/api/pipeline/${selectedId}/clips`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ clips: selected.editClips.map(c => ({ id: c.id, included: !allIncluded })) }),
+                          });
+                          fetchVideos();
+                        }}>
+                        {selected.editClips.every(c => c.included) ? "전체 제외" : "전체 포함"}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "3px 8px", color: "#f87171" }}
+                        onClick={async () => {
+                          if (!selectedId || !confirm("모든 클립을 삭제하시겠습니까?")) return;
+                          for (const c of selected.editClips) {
+                            await fetch(`/api/pipeline/${selectedId}/clips?clipId=${c.id}`, { method: "DELETE" });
+                          }
+                          fetchVideos();
+                        }}>
+                        <Trash2 size={10} />전체 삭제
+                      </button>
+                    </div>
+                  )}
+
                   {(selected.editClips || []).map((clip, i) => (
                     <div key={clip.id} style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
+                      padding: "10px 0",
                       borderBottom: "1px solid var(--border-subtle)",
-                      opacity: clip.included ? 1 : 0.4,
+                      opacity: clip.included ? 1 : 0.35,
+                      transition: "opacity 0.2s",
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", width: 18 }}>{i + 1}</span>
-                      <span style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--text-secondary)" }}>
-                        {clip.startTime} → {clip.endTime}
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({Math.round(clipDuration(clip))}초)</span>
-                       {clip.label && (
-                        <span className="badge badge-brand" style={{ fontSize: 9 }}>{clip.label}</span>
+                      {/* 상단: 순서 + 타임코드 + 라벨 + 길이 + 액션 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 800, color: "#f59e0b", width: 20,
+                          height: 20, borderRadius: "50%", background: "#f59e0b15",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>{i + 1}</span>
+
+                        {/* 인라인 시간 수정 */}
+                        {editingClipId === clip.id ? (
+                          <>
+                            <input className="input" value={editStart} onChange={e => setEditStart(e.target.value)}
+                              style={{ width: 80, fontSize: 11, fontFamily: "JetBrains Mono", padding: "3px 6px" }} />
+                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>→</span>
+                            <input className="input" value={editEnd} onChange={e => setEditEnd(e.target.value)}
+                              style={{ width: 80, fontSize: 11, fontFamily: "JetBrains Mono", padding: "3px 6px" }} />
+                            <select className="input" value={editLabel} onChange={e => setEditLabel(e.target.value)}
+                              style={{ width: 90, fontSize: 11, padding: "3px 6px" }}>
+                              {CLIP_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                            <button className="btn btn-brand btn-sm" style={{ padding: "3px 8px", fontSize: 10 }}
+                              onClick={async () => {
+                                await fetch(`/api/pipeline/${selectedId}/clips`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ clips: [{ id: clip.id, startTime: editStart, endTime: editEnd, label: editLabel }] }),
+                                });
+                                setEditingClipId(null);
+                                fetchVideos();
+                              }}>
+                              <Check size={10} />저장
+                            </button>
+                            <button className="btn btn-ghost btn-sm" style={{ padding: "3px 6px", fontSize: 10 }}
+                              onClick={() => setEditingClipId(null)}>
+                              <X size={10} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{
+                              fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                              color: "var(--text-secondary)", cursor: "pointer",
+                              padding: "2px 6px", borderRadius: 4,
+                              background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+                            }}
+                              title="클릭하여 수정"
+                              onClick={() => {
+                                setEditingClipId(clip.id);
+                                setEditStart(clip.startTime);
+                                setEditEnd(clip.endTime);
+                                setEditLabel(clip.label || "하이라이트");
+                              }}>
+                              {clip.startTime} → {clip.endTime}
+                            </span>
+                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({Math.round(clipDuration(clip))}초)</span>
+                            {clip.label && (
+                              <span className="badge badge-brand" style={{ fontSize: 9 }}>{clip.label}</span>
+                            )}
+                          </>
+                        )}
+
+                        <div style={{ flex: 1 }} />
+                        <button className="btn btn-ghost btn-sm" style={{ padding: "3px 8px", fontSize: 10 }}
+                          onClick={() => toggleClip(clip)}>
+                          {clip.included ? "제외" : "포함"}
+                        </button>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: "3px 6px" }}
+                          onClick={() => deleteClip(clip.id)}>
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+
+                      {/* 하단: AI 추천 이유 */}
+                      {clip.note && (
+                        <div style={{
+                          marginTop: 5, marginLeft: 28, fontSize: 11,
+                          color: "var(--text-muted)", fontStyle: "italic",
+                          padding: "4px 8px", borderRadius: 6,
+                          background: "rgba(99,102,241,0.03)", borderLeft: "2px solid rgba(99,102,241,0.2)",
+                        }}>
+                          {clip.note}
+                        </div>
                       )}
-                      <div style={{ flex: 1 }} />
-                      <button className="btn btn-ghost btn-sm" style={{ padding: "3px 8px", fontSize: 10 }}
-                        onClick={() => toggleClip(clip)}>
-                        {clip.included ? "제외" : "포함"}
-                      </button>
-                      <button className="btn btn-ghost btn-sm" style={{ padding: "3px 6px" }}
-                        onClick={() => deleteClip(clip.id)}>
-                        <Trash2 size={11} />
-                      </button>
                     </div>
                   ))}
 
-                  {/* 새 클립 추가 */}
-                  <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                  {/* 타임라인 총 길이 바 */}
+                  {totalClipSec > 0 && (
+                    <div style={{ margin: "12px 0 8px" }}>
+                      <div style={{
+                        display: "flex", justifyContent: "space-between",
+                        fontSize: 10, color: "var(--text-muted)", marginBottom: 4,
+                      }}>
+                        <span>요약 편집 타임라인</span>
+                        <span>{formatDuration(totalClipSec)} / 3~5분</span>
+                      </div>
+                      <div style={{
+                        height: 6, borderRadius: 3, background: "var(--bg-elevated)",
+                        overflow: "hidden", position: "relative",
+                      }}>
+                        <div style={{
+                          height: "100%", borderRadius: 3,
+                          width: `${Math.min(100, (totalClipSec / 300) * 100)}%`,
+                          background: totalClipSec >= 180 && totalClipSec <= 300
+                            ? "linear-gradient(90deg, #10b981, #22c55e)"
+                            : totalClipSec < 180
+                              ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
+                              : "linear-gradient(90deg, #ef4444, #f87171)",
+                          transition: "width 0.3s ease",
+                        }} />
+                        {/* 3분 마커 */}
+                        <div style={{
+                          position: "absolute", top: 0, left: `${(180 / 300) * 100}%`,
+                          width: 1, height: "100%", background: "rgba(255,255,255,0.3)",
+                        }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 수동 클립 추가 */}
+                  <div style={{
+                    display: "flex", gap: 8, marginTop: 10, padding: "10px 0",
+                    borderTop: "1px solid var(--border-subtle)", alignItems: "center",
+                  }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>수동 추가:</span>
                     <input className="input" value={newClipStart} onChange={e => setNewClipStart(e.target.value)}
-                      placeholder="시작" style={{ width: 90, fontSize: 12, fontFamily: "JetBrains Mono" }} />
+                      placeholder="시작" style={{ width: 85, fontSize: 11, fontFamily: "JetBrains Mono" }} />
                     <ArrowRight size={12} color="var(--text-muted)" />
                     <input className="input" value={newClipEnd} onChange={e => setNewClipEnd(e.target.value)}
-                      placeholder="끝" style={{ width: 90, fontSize: 12, fontFamily: "JetBrains Mono" }} />
+                      placeholder="끝" style={{ width: 85, fontSize: 11, fontFamily: "JetBrains Mono" }} />
                     <select className="input" value={newClipLabel} onChange={e => setNewClipLabel(e.target.value)}
-                      style={{ width: 100, fontSize: 12 }}>
+                      style={{ width: 90, fontSize: 11 }}>
                       {CLIP_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
                     </select>
-                    <button className="btn btn-brand btn-sm" onClick={addClip} style={{ gap: 4, whiteSpace: "nowrap" }}>
-                      <Plus size={12} />클립 추가
+                    <button className="btn btn-brand btn-sm" onClick={addClip} style={{ gap: 4, whiteSpace: "nowrap", fontSize: 11 }}>
+                      <Plus size={11} />추가
                     </button>
                   </div>
                 </div>

@@ -21,6 +21,169 @@ export async function POST(
     });
     if (!video) return NextResponse.json({ error: "영상 없음" }, { status: 404 });
 
+    // ── 0. AI 자동 클립 분석 ──
+    if (action === "analyze_clips") {
+      const openaiKey = process.env.OPENAI_API_KEY;
+      if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다" }, { status: 500 });
+
+      // 1) YouTube 자막 추출
+      let transcript: { time: string; text: string; startSec: number; endSec: number }[] = [];
+      try {
+        const { YoutubeTranscript } = await import("youtube-transcript");
+        const raw = await YoutubeTranscript.fetchTranscript(video.ytVideoId || video.originalUrl);
+        transcript = raw.map((seg: { offset: number; duration: number; text: string }) => {
+          const startSec = seg.offset / 1000;
+          const endSec = startSec + seg.duration / 1000;
+          return {
+            time: secToTime(startSec),
+            text: seg.text,
+            startSec: Math.round(startSec * 10) / 10,
+            endSec: Math.round(endSec * 10) / 10,
+          };
+        });
+      } catch {
+        return NextResponse.json({
+          error: "자막 추출 실패 — YouTube 자막이 없어 AI 분석이 불가능합니다.",
+          suggestion: "수동으로 클립을 추가해 주세요.",
+        }, { status: 422 });
+      }
+
+      if (transcript.length === 0) {
+        return NextResponse.json({ error: "자막이 비어 있어 분석할 수 없습니다" }, { status: 422 });
+      }
+
+      // 2) 전체 자막을 GPT-4o에게 분석 요청
+      const transcriptText = transcript.map(s => `[${s.time}] ${s.text}`).join("\n");
+      const totalDuration = transcript[transcript.length - 1]?.endSec || 0;
+
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          temperature: 0.5,
+          messages: [
+            {
+              role: "system",
+              content: `당신은 유튜브 콘텐츠 편집 전문가입니다.
+외국인이 한국을 체험한 영상의 자막을 분석하여, 한국인 구독자가 가장 좋아할 핵심 구간들을 선별합니다.
+
+목표: 전체 영상에서 3~5분 분량(총 180~300초)에 해당하는 5~8개 핵심 클립을 선별
+
+선별 기준 (우선순위):
+1. 🔥 임팩트 반응: 외국인이 한국 문화에 놀라거나 감동하는 순간
+2. 😂 유머: 재미있거나 웃긴 장면
+3. 🥺 감동: 진심 어린 감정 표현
+4. 🍜 먹방 반응: 한국 음식을 처음 먹는 순간 
+5. 🏛️ 문화 충격: 한국의 시스템/문화에 놀라는 순간
+6. 📸 비주얼: 시각적으로 인상적인 장면
+7. 🎬 훅: 영상 시작 15초 이내의 오프닝 임팩트
+
+규칙:
+- 각 클립은 20~60초 길이
+- 클립 간 겹침 금지
+- 반드시 JSON으로 반환
+- 총 길이가 180~300초(3~5분) 범위에 맞추기
+- 각 클립에 왜 구독자가 좋아할지 이유를 한줄로 설명
+
+반환 형식:
+{
+  "clips": [
+    {
+      "startTime": "MM:SS",
+      "endTime": "MM:SS",
+      "label": "훅|반응|하이라이트|나레이션|문화 설명|엔딩",
+      "reason": "한줄 추천 이유 (한국어)",
+      "emoji": "🔥|😂|🥺|🍜|🏛️|📸|🎬"
+    }
+  ],
+  "summary": "전체 분석 요약 (한국어, 2~3문장)"
+}`
+            },
+            {
+              role: "user",
+              content: `영상 제목: ${video.title}
+채널: ${video.channel}
+언어: ${video.lang || "unknown"}
+장르: ${video.niche || "K-문화"}
+전체 길이: 약 ${Math.round(totalDuration / 60)}분
+
+자막 전체:
+${transcriptText}`
+            }
+          ],
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      const data = await res.json();
+      let analysisResult: {
+        clips: { startTime: string; endTime: string; label: string; reason: string; emoji: string }[];
+        summary: string;
+      };
+
+      try {
+        const content = data.choices?.[0]?.message?.content || "{}";
+        analysisResult = JSON.parse(content);
+      } catch {
+        return NextResponse.json({ error: "AI 분석 결과 파싱 실패" }, { status: 500 });
+      }
+
+      if (!analysisResult.clips || analysisResult.clips.length === 0) {
+        return NextResponse.json({ error: "AI가 추천 클립을 생성하지 못했습니다" }, { status: 500 });
+      }
+
+      // 3) 기존 클립 삭제 후 AI 추천 클립으로 교체
+      await prisma.editClip.deleteMany({ where: { videoId: id } });
+
+      const createdClips = [];
+      for (let i = 0; i < analysisResult.clips.length; i++) {
+        const c = analysisResult.clips[i];
+        // MM:SS → 00:MM:SS 형식 정규화
+        const start = c.startTime.split(":").length === 2 ? `00:${c.startTime}` : c.startTime;
+        const end = c.endTime.split(":").length === 2 ? `00:${c.endTime}` : c.endTime;
+
+        const clip = await prisma.editClip.create({
+          data: {
+            videoId: id,
+            order: i,
+            startTime: start,
+            endTime: end,
+            label: c.label || "하이라이트",
+            note: `${c.emoji || "✨"} ${c.reason}`,
+            included: true,
+          },
+        });
+        createdClips.push(clip);
+      }
+
+      // 4) 총 길이 계산 + stage 업데이트
+      const totalSeconds = createdClips.reduce((acc, clip) => {
+        return acc + (timeToSec(clip.endTime) - timeToSec(clip.startTime));
+      }, 0);
+
+      await prisma.pipelineVideo.update({
+        where: { id },
+        data: {
+          stage: "요약 편집",
+          summaryDuration: Math.round(totalSeconds),
+          transcriptJson: JSON.stringify(transcript), // 자막도 함께 저장
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        clipCount: createdClips.length,
+        totalSeconds: Math.round(totalSeconds),
+        summary: analysisResult.summary,
+        clips: createdClips,
+        message: `AI가 ${createdClips.length}개 핵심 클립을 선별했습니다 (${Math.round(totalSeconds)}초). 마음에 안 드는 클립은 수정하거나 삭제할 수 있습니다.`,
+      });
+    }
+
     // ── 1. 자막 추출 (Whisper-compatible, YouTube 자막 fallback) ──
     if (action === "transcribe") {
       // YouTube transcript 시도
