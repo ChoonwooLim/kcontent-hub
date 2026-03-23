@@ -1,24 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// GET /api/keys — 저장된 모든 API 키 조회
+// 환경변수 키 매핑 (배포 시 영구 유지)
+const ENV_KEY_MAP: Record<string, string> = {
+  youtube: process.env.YOUTUBE_API_KEY ?? "",
+  openai:  process.env.OPENAI_API_KEY  ?? "",
+  deepl:   process.env.DEEPL_API_KEY   ?? "",
+  tiktok:  process.env.TIKTOK_API_KEY  ?? "",
+};
+
+// GET /api/keys — 환경변수 우선, DB fallback
 export async function GET() {
+  // 1. 환경변수에서 기본값 로드
+  const result: Record<string, string> = { ...ENV_KEY_MAP };
+
+  // 2. DB에 저장된 값으로 덮어쓰기 (사용자가 UI에서 입력한 값)
   try {
     const keys = await prisma.apiKey.findMany();
-    const result: Record<string, string> = {};
-    for (const k of keys) result[k.service] = k.value;
-    return NextResponse.json({ keys: result });
-  } catch (e) {
-    return NextResponse.json({ error: "DB 연결 오류", detail: String(e) }, { status: 500 });
+    for (const k of keys) {
+      // DB 값이 있으면 우선 사용 (환경변수 덮어씀)
+      if (k.value) result[k.service] = k.value;
+    }
+  } catch {
+    // DB 연결 실패 시 환경변수만 사용 (에러 무시)
   }
+
+  return NextResponse.json({ keys: result });
 }
 
-// POST /api/keys — API 키 저장 (upsert)
+// POST /api/keys — DB에 저장 (upsert)
 export async function POST(req: NextRequest) {
   try {
     const body: Record<string, string> = await req.json();
+    // 빈 값은 저장 안 함
+    const entries = Object.entries(body).filter(([, v]) => v && v.trim());
+    if (entries.length === 0) return NextResponse.json({ saved: 0 });
+
     const results = await Promise.all(
-      Object.entries(body).map(([service, value]) =>
+      entries.map(([service, value]) =>
         prisma.apiKey.upsert({
           where: { service },
           update: { value, verified: false },
@@ -28,6 +47,7 @@ export async function POST(req: NextRequest) {
     );
     return NextResponse.json({ saved: results.length });
   } catch (e) {
-    return NextResponse.json({ error: "저장 실패", detail: String(e) }, { status: 500 });
+    // DB 저장 실패 시에도 200 (클라이언트는 localStorage fallback 사용)
+    return NextResponse.json({ error: "DB 연결 없음 — 환경변수로 API 키를 설정하세요", detail: String(e) }, { status: 503 });
   }
 }

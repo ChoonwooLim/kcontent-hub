@@ -8,7 +8,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // YouTube Data API v3 — 간단한 검색 요청으로 키 유효성 확인
     const res = await fetch(
       `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=korea&maxResults=1&key=${apiKey}`
     );
