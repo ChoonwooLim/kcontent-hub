@@ -2,7 +2,8 @@
 import { useState } from "react";
 import {
   Search, SlidersHorizontal, Play, Eye, ThumbsUp, Clock,
-  Download, RefreshCw, Zap, X, ExternalLink, AlertCircle
+  Download, RefreshCw, Zap, X, ExternalLink, AlertCircle,
+  Check, Copy, BookmarkCheck, Loader, Mail, MessageSquare
 } from "lucide-react";
 
 const NICHES = ["전체", "K-먹방", "K-바비큐", "K-교통", "K-문화", "K-의료", "K-뷰티", "K-라이프", "K-쇼핑", "K-관광"];
@@ -93,6 +94,136 @@ function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void 
   );
 }
 
+/* ── 원작자 알림 모달 ─────────────────────────────────── */
+type OutreachData = {
+  videoTitle: string;
+  channel: string;
+  lang: string;
+  message: string;
+  ytUrl: string;
+};
+
+function OutreachModal({ data, onClose }: { data: OutreachData; onClose: () => void }) {
+  const [message, setMessage] = useState(data.message);
+  const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<"comment" | "email">("comment");
+
+  const copyMessage = () => {
+    navigator.clipboard.writeText(message);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openYouTube = () => {
+    window.open(data.ytUrl, "_blank");
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.88)", backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 640, background: "var(--bg-surface)",
+        borderRadius: 16, overflow: "hidden",
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+      }}>
+        {/* 헤더 */}
+        <div style={{
+          padding: "18px 20px", borderBottom: "1px solid var(--border-subtle)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: "linear-gradient(135deg, #10b981, #34d399)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <BookmarkCheck size={16} color="white" />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
+                  ✅ 파이프라인 저장 완료
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                  원작자에게 보낼 협업 요청 메시지가 생성되었습니다
+                </div>
+              </div>
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ padding: "6px 8px" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* 영상 정보 */}
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-elevated)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>{data.videoTitle}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{data.channel} · 언어: {data.lang.toUpperCase()}</div>
+        </div>
+
+        {/* 탭 */}
+        <div style={{ padding: "10px 20px 0", display: "flex", gap: 6 }}>
+          {([
+            { key: "comment" as const, icon: <MessageSquare size={12} />, label: "YouTube 댓글" },
+            { key: "email" as const, icon: <Mail size={12} />, label: "이메일/DM" },
+          ]).map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 14px", borderRadius: "8px 8px 0 0", fontSize: 12, fontWeight: 600,
+                cursor: "pointer",
+                background: activeTab === tab.key ? "var(--bg-elevated)" : "transparent",
+                border: activeTab === tab.key ? "1px solid var(--border-default)" : "1px solid transparent",
+                borderBottom: activeTab === tab.key ? "1px solid var(--bg-elevated)" : "none",
+                color: activeTab === tab.key ? "var(--text-primary)" : "var(--text-muted)",
+                transition: "all 0.15s",
+              }}>
+              {tab.icon}{tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 메시지 편집 */}
+        <div style={{ padding: "14px 20px" }}>
+          <textarea value={message} onChange={e => setMessage(e.target.value)}
+            style={{
+              width: "100%", minHeight: 220, padding: 14, borderRadius: 10,
+              background: "var(--bg-elevated)", border: "1px solid var(--border-default)",
+              color: "var(--text-primary)", fontSize: 13, lineHeight: 1.7,
+              resize: "vertical", fontFamily: "inherit",
+            }}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+            💡 메시지를 자유롭게 편집할 수 있습니다. {activeTab === "comment" ? "복사 후 YouTube 영상 댓글에 붙여넣기하세요." : "복사 후 이메일이나 SNS DM으로 전송하세요."}
+          </div>
+        </div>
+
+        {/* 하단 액션 */}
+        <div style={{
+          padding: "14px 20px", borderTop: "1px solid var(--border-subtle)",
+          display: "flex", gap: 8, justifyContent: "flex-end",
+        }}>
+          <button className="btn btn-ghost btn-sm" onClick={openYouTube} style={{ gap: 6 }}>
+            <ExternalLink size={12} />YouTube 영상 열기
+          </button>
+          <button className="btn btn-brand btn-sm" onClick={copyMessage}
+            style={{
+              gap: 6, minWidth: 130,
+              background: copied ? "#10b981" : undefined,
+              transition: "all 0.2s",
+            }}>
+            {copied ? <><Check size={12} />복사 완료!</> : <><Copy size={12} />메시지 복사</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HunterPage() {
   const [selectedNiche, setSelectedNiche] = useState("전체");
   const [maxSubs, setMaxSubs] = useState("50000");
@@ -109,6 +240,66 @@ export default function HunterPage() {
   });
   const [selected, setSelected] = useState<string | null>(null);
   const [playing, setPlaying] = useState<VideoItem | null>(null);
+
+  // 저장 관련 상태
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [outreachModal, setOutreachModal] = useState<OutreachData | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // 파이프라인 저장 핸들러
+  const handleSave = async (v: VideoItem) => {
+    setSavingId(v.id);
+    setSaveError(null);
+    try {
+      const ytUrl = `https://www.youtube.com/watch?v=${v.ytId}`;
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: v.title,
+          channel: v.channel,
+          originalUrl: ytUrl,
+          ytVideoId: v.ytId,
+          views: v.views,
+          likes: v.likes,
+          duration: v.duration,
+          subs: v.subs,
+          lang: v.lang || "unknown",
+          grade: v.grade,
+          score: v.score,
+          niche: v.niche,
+          aiReason: v.reason,
+          hasCC: v.hasCC,
+          thumbnail: v.thumbnail,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSaveError(data.error || "저장에 실패했습니다.");
+        return;
+      }
+
+      // 성공 — 저장 완료 상태 업데이트
+      setSavedIds(prev => new Set(prev).add(v.id));
+
+      // 원작자 알림 모달 표시
+      if (data.outreach) {
+        setOutreachModal({
+          videoTitle: v.title,
+          channel: v.channel,
+          lang: data.outreach.lang || v.lang || "en",
+          message: data.outreach.message,
+          ytUrl,
+        });
+      }
+    } catch (e) {
+      setSaveError(`네트워크 오류: ${String(e)}`);
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   const runScan = async () => {
     setScanning(true);
@@ -144,6 +335,7 @@ export default function HunterPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1100 }}>
       {playing && <VideoModal video={playing} onClose={() => setPlaying(null)} />}
+      {outreachModal && <OutreachModal data={outreachModal} onClose={() => setOutreachModal(null)} />}
 
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>소재 수집기</h1>
@@ -207,10 +399,10 @@ export default function HunterPage() {
         )}
 
         {/* 에러 */}
-        {error && (
+        {(error || saveError) && (
           <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 8, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)", display: "flex", gap: 10, alignItems: "flex-start" }}>
             <AlertCircle size={15} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
-            <div style={{ fontSize: 13, color: "#fca5a5" }}>{error}</div>
+            <div style={{ fontSize: 13, color: "#fca5a5" }}>{error || saveError}</div>
           </div>
         )}
       </div>
@@ -316,7 +508,26 @@ export default function HunterPage() {
                     <a href={`/dashboard/script?url=${encodeURIComponent(`https://youtube.com/watch?v=${v.ytId}`)}`} style={{ textDecoration: "none" }}>
                       <button className="btn btn-brand btn-sm"><Zap size={12} />AI 대본 생성</button>
                     </a>
-                    <button className="btn btn-ghost btn-sm"><Download size={12} />저장</button>
+                    <button
+                      className={`btn ${savedIds.has(v.id) ? 'btn-brand' : 'btn-ghost'} btn-sm`}
+                      style={{
+                        gap: 6,
+                        background: savedIds.has(v.id) ? '#10b981' : undefined,
+                        borderColor: savedIds.has(v.id) ? '#10b981' : undefined,
+                        color: savedIds.has(v.id) ? 'white' : undefined,
+                        transition: 'all 0.2s',
+                      }}
+                      disabled={savingId === v.id}
+                      onClick={(e) => { e.stopPropagation(); handleSave(v); }}
+                    >
+                      {savingId === v.id ? (
+                        <><Loader size={12} style={{ animation: 'spin 0.9s linear infinite' }} />저장 중...</>
+                      ) : savedIds.has(v.id) ? (
+                        <><BookmarkCheck size={12} />저장됨</>
+                      ) : (
+                        <><Download size={12} />저장</>
+                      )}
+                    </button>
                     <button className="btn btn-ghost btn-sm" style={{ color: "var(--text-muted)" }} onClick={() => setSelected(null)}>건너뛰기</button>
                   </div>
                 </div>

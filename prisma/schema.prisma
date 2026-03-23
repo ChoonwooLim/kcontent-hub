@@ -22,12 +22,18 @@ model PipelineVideo {
   id           String   @id @default(cuid())
   title        String
   channel      String
+  channelId    String?  // YouTube 채널 ID (원작자 연락용)
   originalUrl  String
+  ytVideoId    String?  // YouTube 영상 ID
   views        String?
+  likes        String?
+  duration     String?
+  subs         String?  // 원작자 구독자 수
+  lang         String?  // 원작자 언어 (en, ja, es 등)
   grade        String   @default("B") // "S" | "A" | "B"
   score        Int      @default(70)
   niche        String?
-  stage        String   @default("발굴 대기") // 5단계 중 하나
+  stage        String   @default("발굴 대기") // 5단계: 발굴 대기 → 대본 생성 → 편집 중 → 검수 완료 → 배포 완료
   aiReason     String?  @db.Text
   scriptJson   String?  @db.Text   // 생성된 타임라인 대본 JSON
   titleKo      String?  // AI 생성 제목
@@ -39,6 +45,34 @@ model PipelineVideo {
   updatedAt    DateTime @updatedAt
 
   publishes    PublishRecord[]
+  outreaches   CreatorOutreach[]
+  editClips    EditClip[]
+}
+
+// 원작자 알림 기록 (댓글 / 이메일 / DM)
+model CreatorOutreach {
+  id           String        @id @default(cuid())
+  video        PipelineVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId      String
+  type         String        // "comment" | "email" | "dm"
+  lang         String        // 메시지 언어 (en, ja, es 등)
+  message      String        @db.Text  // 전송 메시지 내용
+  status       String        @default("draft") // "draft" | "sent" | "replied" | "approved"
+  sentAt       DateTime?
+  createdAt    DateTime      @default(now())
+}
+
+// 재편집용 클립 (원본 영상의 특정 구간)
+model EditClip {
+  id           String        @id @default(cuid())
+  video        PipelineVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId      String
+  startTime    String        // "00:01:30"
+  endTime      String        // "00:02:45"
+  label        String?       // "훅", "반응", "나레이션" 등
+  note         String?  @db.Text  // 메모
+  thumbnailUrl String?       // 캡처된 프레임 URL
+  createdAt    DateTime      @default(now())
 }
 
 // 배포 기록
