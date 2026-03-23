@@ -120,7 +120,7 @@ export default function AnalyticsPage() {
             <BarChart data={NICHE_DATA} layout="vertical" margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
               <XAxis type="number" hide />
               <YAxis type="category" dataKey="niche" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} width={60} />
-              <Tooltip formatter={(v: number) => `₩${v.toLocaleString()}`} contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: 8, fontSize: 12 }} />
+              <Tooltip formatter={(v: any) => `₩${Number(v).toLocaleString()}`} contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: 8, fontSize: 12 }} />
               <Bar dataKey="revenue" fill="#6366f1" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>

@@ -152,7 +152,7 @@ export default function EarningsPage() {
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => `₩${v.toLocaleString()}`} />
+              <Tooltip formatter={(v: any) => `₩${Number(v).toLocaleString()}`} />
             </PieChart>
           </ResponsiveContainer>
           <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
