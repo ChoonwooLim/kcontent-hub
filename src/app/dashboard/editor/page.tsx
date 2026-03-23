@@ -322,15 +322,20 @@ export default function EditorPage() {
   const handleAdvance = async () => processAction("advance");
 
   // HD 다운로드 상태
-  const [downloading, setDownloading] = useState<string | null>(null); // "merged" | clipId | null
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadMessage, setDownloadMessage] = useState("");
 
-  // HD 다운로드 핸들러 (다운로드 후 미리보기)
+  // HD 다운로드 핸들러 (비동기 3단계: start → poll → file)
   const handleDownload = async (mode: "single" | "merged", clip?: EditClip) => {
     if (!selected?.ytVideoId) return;
     const dlId = mode === "merged" ? "merged" : clip?.id || "single";
     setDownloading(dlId);
     setDownloadError(null);
+    setDownloadProgress(0);
+    setDownloadMessage("작업 시작 중...");
+
     try {
       const clipsToSend = mode === "single" && clip
         ? [{ startTime: clip.startTime, endTime: clip.endTime, label: clip.label }]
@@ -338,34 +343,71 @@ export default function EditorPage() {
             startTime: c.startTime, endTime: c.endTime, label: c.label,
           }));
 
-      const res = await fetch(`/api/pipeline/${selected.id}/download`, {
+      // 1단계: 작업 시작
+      const startRes = await fetch(`/api/pipeline/${selected.id}/download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          ytVideoId: selected.ytVideoId,
-          clips: clipsToSend,
-        }),
+        body: JSON.stringify({ action: "start", mode, ytVideoId: selected.ytVideoId, clips: clipsToSend }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: "다운로드 실패" }));
-        setDownloadError(errData.error || "다운로드 실패");
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => ({ error: "시작 실패" }));
+        setDownloadError(err.error || "시작 실패");
         return;
       }
 
-      const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
-      const rawName = filenameMatch ? decodeURIComponent(filenameMatch[1]) : `KContent_${mode}.mp4`;
+      const { jobId } = await startRes.json();
 
-      // 미리보기 모달 표시
-      const blobUrl = URL.createObjectURL(blob);
-      setPreviewVideo({ url: blobUrl, filename: rawName, blob });
+      // 2단계: 진행률 폴링 (1초 간격)
+      let done = false;
+      while (!done) {
+        await new Promise(r => setTimeout(r, 1000));
+        const statusRes = await fetch(`/api/pipeline/${selected.id}/download`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "status", jobId }),
+        });
+
+        if (!statusRes.ok) { setDownloadError("상태 조회 실패"); return; }
+
+        const status = await statusRes.json();
+        setDownloadProgress(status.progress);
+        setDownloadMessage(status.message);
+
+        if (status.status === "error") {
+          setDownloadError(status.message);
+          return;
+        }
+
+        if (status.status === "done") {
+          done = true;
+
+          // 3단계: 파일 다운로드
+          setDownloadMessage("파일 받는 중...");
+          const fileRes = await fetch(`/api/pipeline/${selected.id}/download`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "file", jobId }),
+          });
+
+          if (!fileRes.ok) { setDownloadError("파일 다운로드 실패"); return; }
+
+          const blob = await fileRes.blob();
+          const disposition = fileRes.headers.get("Content-Disposition") || "";
+          const nameMatch = disposition.match(/filename="?([^"]+)"?/);
+          const rawName = nameMatch ? decodeURIComponent(nameMatch[1]) : `KContent_${mode}.mp4`;
+
+          // 미리보기 모달 표시
+          const blobUrl = URL.createObjectURL(blob);
+          setPreviewVideo({ url: blobUrl, filename: rawName, blob });
+        }
+      }
     } catch (e) {
       setDownloadError(`네트워크 오류: ${String(e)}`);
     } finally {
       setDownloading(null);
+      setDownloadProgress(0);
+      setDownloadMessage("");
     }
   };
 
@@ -851,11 +893,43 @@ export default function EditorPage() {
                     onClick={() => handleDownload("merged")}
                   >
                     {downloading === "merged" ? (
-                      <><Loader size={13} style={{ animation: "spin 0.9s linear infinite" }} />전체 영상 다운로드 중... (완료까지 수분 소요)</>
+                      <><Loader size={13} style={{ animation: "spin 0.9s linear infinite" }} />{downloadMessage || "준비 중..."}</>
                     ) : (
                       <><Download size={13} />🎬 전체 클립 병합 HD 다운로드 ({selected.editClips?.filter(c => c.included).length}개 · {formatDuration(totalClipSec)})</>
                     )}
                   </button>
+
+                  {/* 다운로드 프로그레스 바 */}
+                  {downloading && (
+                    <div style={{
+                      marginBottom: 12, padding: "10px 14px", borderRadius: 8,
+                      background: "rgba(6,182,212,0.05)", border: "1px solid rgba(6,182,212,0.2)",
+                    }}>
+                      <div style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        marginBottom: 6,
+                      }}>
+                        <span style={{ fontSize: 11, color: "#67e8f9", display: "flex", alignItems: "center", gap: 6 }}>
+                          <Loader size={11} style={{ animation: "spin 0.9s linear infinite" }} />
+                          {downloadMessage || "처리 중..."}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#06b6d4" }}>
+                          {downloadProgress}%
+                        </span>
+                      </div>
+                      <div style={{
+                        height: 6, borderRadius: 3, background: "rgba(255,255,255,0.06)",
+                        overflow: "hidden",
+                      }}>
+                        <div style={{
+                          height: "100%", borderRadius: 3,
+                          width: `${downloadProgress}%`,
+                          background: "linear-gradient(90deg, #06b6d4, #22d3ee, #67e8f9)",
+                          transition: "width 0.3s ease",
+                        }} />
+                      </div>
+                    </div>
+                  )}
 
                   {downloadError && (
                     <div style={{
@@ -897,7 +971,7 @@ export default function EditorPage() {
                           onClick={() => handleDownload("single", clip)}
                         >
                           {downloading === clip.id ? (
-                            <><Loader size={10} style={{ animation: "spin 0.9s linear infinite" }} />다운로드 중</>
+                            <><Loader size={10} style={{ animation: "spin 0.9s linear infinite" }} />{downloadProgress}%</>
                           ) : (
                             <><Download size={10} />MP4 저장</>
                           )}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFileSync, execSync } from "child_process";
+import { spawn, execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import path from "path";
 
@@ -7,21 +7,13 @@ import path from "path";
 const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
 const isWindows = process.platform === "win32";
 
-/** which / where 명령으로 바이너리 경로 탐색 */
-function findBinary(name: string, fallbackPaths: string[]): string {
-  // 1) 시스템 PATH에서 탐색
+function findBinary(name: string): string {
   try {
     const cmd = isWindows ? `where ${name}` : `which ${name}`;
     const result = execSync(cmd, { stdio: "pipe", timeout: 5000 }).toString().trim().split("\n")[0].trim();
     if (result && existsSync(result)) return result;
   } catch {}
 
-  // 2) 하드코딩 폴백 경로 확인
-  for (const p of fallbackPaths) {
-    if (existsSync(p)) return p;
-  }
-
-  // 3) Windows: 재귀 탐색 (winget 설치 경로)
   if (isWindows) {
     const username = process.env.USERNAME || process.env.USER || "choon";
     const searchBases = [
@@ -30,11 +22,10 @@ function findBinary(name: string, fallbackPaths: string[]): string {
     ];
     for (const base of searchBases) {
       if (!existsSync(base)) continue;
-      const found = findFileRecursive(base, isWindows ? `${name}.exe` : name, 5);
+      const found = findFileRecursive(base, `${name}.exe`, 5);
       if (found) return found;
     }
   }
-
   throw new Error(`${name}를 찾을 수 없습니다. 설치 후 PATH에 추가하세요.`);
 }
 
@@ -54,18 +45,8 @@ function findFileRecursive(dir: string, name: string, depth: number): string | n
   return null;
 }
 
-/* ── 유틸리티 ─────────────────────────────────────────── */
 function ensureTmpDir() {
   if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
-}
-
-function cleanTmpFiles(prefix: string) {
-  if (!existsSync(TMP_DIR)) return;
-  for (const f of readdirSync(TMP_DIR)) {
-    if (f.startsWith(prefix)) {
-      try { unlinkSync(path.join(TMP_DIR, f)); } catch {}
-    }
-  }
 }
 
 function normalizeTime(t: string): string {
@@ -75,154 +56,230 @@ function normalizeTime(t: string): string {
 }
 
 function timeToSec(t: string): number {
-  const parts = t.split(":").map(Number);
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0];
+  const p = t.split(":").map(Number);
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  if (p.length === 2) return p[0] * 60 + p[1];
+  return p[0];
 }
 
-/**
- * POST /api/pipeline/[id]/download
- * body: { mode: "single" | "merged", ytVideoId, clips: [{startTime, endTime, label}] }
- */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+/* ── 작업 상태 파일 관리 ──────────────────────────────── */
+interface JobStatus {
+  status: "downloading" | "trimming" | "merging" | "done" | "error";
+  progress: number; // 0-100
+  message: string;
+  filename?: string;
+  filePath?: string;
+}
+
+function jobStatusPath(jobId: string) { return path.join(TMP_DIR, `job_${jobId}.json`); }
+
+function writeJobStatus(jobId: string, status: JobStatus) {
+  writeFileSync(jobStatusPath(jobId), JSON.stringify(status), "utf8");
+}
+
+function readJobStatus(jobId: string): JobStatus | null {
+  const p = jobStatusPath(jobId);
+  if (!existsSync(p)) return null;
+  try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; }
+}
+
+/* ── 백그라운드 다운로드 함수 ─────────────────────────── */
+async function processDownloadJob(
+  jobId: string, ytVideoId: string, mode: string,
+  clips: { startTime: string; endTime: string; label?: string }[]
 ) {
-  const { id } = await params;
-  const prefix = `dl_${id}`;
-
   try {
-    const { mode, ytVideoId, clips } = await req.json();
-
-    if (!ytVideoId || !clips || clips.length === 0) {
-      return NextResponse.json({ error: "영상 ID와 클립 정보가 필요합니다." }, { status: 400 });
-    }
-
-    ensureTmpDir();
-    cleanTmpFiles(prefix);
-
-    // 바이너리 경로 자동 탐색
-    let ytdlp: string;
-    try { ytdlp = findBinary("yt-dlp", []); } catch (e) {
-      return NextResponse.json({ error: String(e) }, { status: 500 });
-    }
-
-    let ffmpeg: string;
-    try { ffmpeg = findBinary("ffmpeg", []); } catch (e) {
-      return NextResponse.json({ error: String(e) }, { status: 500 });
-    }
-
-    console.log("[download] yt-dlp:", ytdlp, "| ffmpeg:", ffmpeg);
-
+    const ytdlp = findBinary("yt-dlp");
+    const ffmpeg = findBinary("ffmpeg");
     const ytUrl = `https://www.youtube.com/watch?v=${ytVideoId}`;
+    const sourcePath = path.join(TMP_DIR, `job_${jobId}_source.mp4`);
 
-    // 1. yt-dlp로 원본 영상 다운로드 (HD 1080p 우선)
-    const sourcePath = path.join(TMP_DIR, `${prefix}_source.mp4`);
-
+    // 1단계: yt-dlp 다운로드 (진행률 캡처)
     if (!existsSync(sourcePath)) {
-      // 이전 시도의 잔여 파일 정리 (부분 다운로드)
-      for (const f of readdirSync(TMP_DIR)) {
-        if (f.startsWith(prefix) && f !== path.basename(sourcePath)) {
-          try { unlinkSync(path.join(TMP_DIR, f)); } catch {}
-        }
-      }
-      try {
-        console.log("[download] yt-dlp 다운로드 시작:", ytUrl);
-        execFileSync(ytdlp, [
+      writeJobStatus(jobId, { status: "downloading", progress: 0, message: "영상 다운로드 시작..." });
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn(ytdlp, [
           "-f", "best[height<=1080]/best",
           "--no-check-certificates",
-          "--no-warnings",
+          "--newline",        // 진행률을 줄바꿈으로 출력
           "-o", sourcePath,
           ytUrl,
-        ], { timeout: 600000, stdio: ["pipe", "pipe", "pipe"] }); // 10분 타임아웃
-        console.log("[download] yt-dlp 다운로드 완료");
-      } catch (e: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const stderr = (e as any)?.stderr?.toString?.() || "";
-        const errMsg = stderr || (e instanceof Error ? e.message : String(e));
-        console.error("[download] yt-dlp 에러:", errMsg.slice(0, 500));
-        return NextResponse.json(
-          { error: `영상 다운로드 실패: ${errMsg.slice(0, 200)}` },
-          { status: 500 }
-        );
-      }
+        ]);
+
+        proc.stdout.on("data", (data: Buffer) => {
+          const line = data.toString();
+          const match = line.match(/(\d+\.?\d*)%/);
+          if (match) {
+            const pct = Math.min(parseFloat(match[1]), 99);
+            writeJobStatus(jobId, {
+              status: "downloading",
+              progress: Math.round(pct * 0.7), // 다운로드 = 전체의 70%
+              message: `영상 다운로드 중... ${pct.toFixed(1)}%`,
+            });
+          }
+        });
+
+        proc.stderr.on("data", (data: Buffer) => {
+          const line = data.toString();
+          const match = line.match(/(\d+\.?\d*)%/);
+          if (match) {
+            const pct = Math.min(parseFloat(match[1]), 99);
+            writeJobStatus(jobId, {
+              status: "downloading",
+              progress: Math.round(pct * 0.7),
+              message: `영상 다운로드 중... ${pct.toFixed(1)}%`,
+            });
+          }
+        });
+
+        proc.on("close", (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`yt-dlp 종료 코드: ${code}`));
+        });
+
+        proc.on("error", reject);
+
+        // 10분 타임아웃
+        setTimeout(() => { proc.kill(); reject(new Error("다운로드 시간 초과 (10분)")); }, 600000);
+      });
     }
 
     if (!existsSync(sourcePath)) {
-      return NextResponse.json({ error: "영상 파일을 다운로드할 수 없습니다." }, { status: 500 });
+      writeJobStatus(jobId, { status: "error", progress: 0, message: "영상 파일을 다운로드할 수 없습니다." });
+      return;
     }
+
+    // 2단계: ffmpeg 트림
+    writeJobStatus(jobId, { status: "trimming", progress: 72, message: "클립 트림 중..." });
 
     if (mode === "single") {
       const clip = clips[0];
       const start = normalizeTime(clip.startTime);
       const duration = timeToSec(normalizeTime(clip.endTime)) - timeToSec(start);
-      const outPath = path.join(TMP_DIR, `${prefix}_clip.mp4`);
+      const outPath = path.join(TMP_DIR, `job_${jobId}_out.mp4`);
 
-      console.log("[download] ffmpeg 트림:", start, "→", duration, "초");
-      execFileSync(ffmpeg, [
+      await runFFmpeg(ffmpeg, [
         "-y", "-ss", start, "-i", sourcePath,
-        "-t", String(duration),
-        "-c", "copy",       // 재인코딩 없이 빠른 복사
-        "-movflags", "+faststart",
-        outPath,
-      ], { timeout: 60000, stdio: "pipe" });
-
-      const fileData = readFileSync(outPath);
-      cleanTmpFiles(prefix);
+        "-t", String(duration), "-c", "copy", "-movflags", "+faststart", outPath,
+      ]);
 
       const label = clip.label || "clip";
       const filename = `KContent_${label}_${start.replace(/:/g, "")}.mp4`;
 
-      return new NextResponse(fileData, {
-        status: 200,
-        headers: {
-          "Content-Type": "video/mp4",
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
-          "Content-Length": String(fileData.length),
-        },
+      writeJobStatus(jobId, {
+        status: "done", progress: 100,
+        message: "다운로드 완료!", filename, filePath: outPath,
       });
-    }
-
-    if (mode === "merged") {
+    } else {
+      // merged
       const clipPaths: string[] = [];
-
       for (let i = 0; i < clips.length; i++) {
         const clip = clips[i];
         const start = normalizeTime(clip.startTime);
         const duration = timeToSec(normalizeTime(clip.endTime)) - timeToSec(start);
-        const clipPath = path.join(TMP_DIR, `${prefix}_part${i}.mp4`);
+        const clipPath = path.join(TMP_DIR, `job_${jobId}_part${i}.mp4`);
 
-        console.log(`[download] 클립 ${i + 1}/${clips.length} 트림:`, start, "→", duration, "초");
-        execFileSync(ffmpeg, [
+        writeJobStatus(jobId, {
+          status: "trimming",
+          progress: 72 + Math.round((i / clips.length) * 18),
+          message: `클립 ${i + 1}/${clips.length} 트림 중...`,
+        });
+
+        await runFFmpeg(ffmpeg, [
           "-y", "-ss", start, "-i", sourcePath,
-          "-t", String(duration),
-          "-c", "copy",
-          "-movflags", "+faststart",
-          clipPath,
-        ], { timeout: 60000, stdio: "pipe" });
-
+          "-t", String(duration), "-c", "copy", "-movflags", "+faststart", clipPath,
+        ]);
         clipPaths.push(clipPath);
       }
 
-      // concat  리스트 파일
-      const concatFile = path.join(TMP_DIR, `${prefix}_list.txt`);
-      const concatContent = clipPaths.map(p => `file '${p.replace(/\\/g, "/")}'`).join("\n");
-      writeFileSync(concatFile, concatContent, "utf8");
+      // 3단계: 병합
+      writeJobStatus(jobId, { status: "merging", progress: 92, message: "클립 병합 중..." });
+      const concatFile = path.join(TMP_DIR, `job_${jobId}_list.txt`);
+      writeFileSync(concatFile, clipPaths.map(p => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf8");
 
-      const mergedPath = path.join(TMP_DIR, `${prefix}_merged.mp4`);
-      console.log("[download] ffmpeg concat:", clips.length, "개 클립 병합");
-      execFileSync(ffmpeg, [
+      const mergedPath = path.join(TMP_DIR, `job_${jobId}_out.mp4`);
+      await runFFmpeg(ffmpeg, [
         "-y", "-f", "concat", "-safe", "0", "-i", concatFile,
-        "-c", "copy",
-        "-movflags", "+faststart",
-        mergedPath,
-      ], { timeout: 300000, stdio: "pipe" });
-
-      const fileData = readFileSync(mergedPath);
-      cleanTmpFiles(prefix);
+        "-c", "copy", "-movflags", "+faststart", mergedPath,
+      ]);
 
       const filename = `KContent_Full_${clips.length}clips.mp4`;
+      writeJobStatus(jobId, {
+        status: "done", progress: 100,
+        message: "다운로드 완료!", filename, filePath: mergedPath,
+      });
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    writeJobStatus(jobId, { status: "error", progress: 0, message: msg.slice(0, 300) });
+  }
+}
+
+function runFFmpeg(ffmpeg: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpeg, args, { stdio: "pipe" });
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg 종료 코드: ${code}`)));
+    proc.on("error", reject);
+    setTimeout(() => { proc.kill(); reject(new Error("ffmpeg 시간 초과")); }, 120000);
+  });
+}
+
+/**
+ * POST /api/pipeline/[id]/download
+ * body: { action: "start", mode, ytVideoId, clips } → 작업 시작, jobId 반환
+ * body: { action: "status", jobId } → 진행 상태 반환
+ * body: { action: "file", jobId } → 완성된 파일 반환
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  await params;
+  ensureTmpDir();
+
+  try {
+    const body = await req.json();
+    const { action } = body;
+
+    if (action === "start") {
+      const { mode, ytVideoId, clips } = body;
+      if (!ytVideoId || !clips?.length) {
+        return NextResponse.json({ error: "영상 ID와 클립 정보가 필요합니다." }, { status: 400 });
+      }
+
+      const jobId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      writeJobStatus(jobId, { status: "downloading", progress: 0, message: "작업 시작..." });
+
+      // 백그라운드에서 실행 (await 안 함!)
+      processDownloadJob(jobId, ytVideoId, mode, clips).catch(() => {});
+
+      return NextResponse.json({ jobId });
+    }
+
+    if (action === "status") {
+      const { jobId } = body;
+      const status = readJobStatus(jobId);
+      if (!status) return NextResponse.json({ error: "작업을 찾을 수 없습니다." }, { status: 404 });
+      return NextResponse.json(status);
+    }
+
+    if (action === "file") {
+      const { jobId } = body;
+      const status = readJobStatus(jobId);
+      if (!status || status.status !== "done" || !status.filePath) {
+        return NextResponse.json({ error: "파일이 준비되지 않았습니다." }, { status: 400 });
+      }
+
+      const fileData = readFileSync(status.filePath);
+      const filename = status.filename || "download.mp4";
+
+      // 임시 파일 정리
+      for (const f of readdirSync(TMP_DIR)) {
+        if (f.startsWith(`job_${jobId}`)) {
+          try { unlinkSync(path.join(TMP_DIR, f)); } catch {}
+        }
+      }
 
       return new NextResponse(fileData, {
         status: 200,
@@ -234,15 +291,8 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({ error: "mode는 'single' 또는 'merged'여야 합니다." }, { status: 400 });
-
+    return NextResponse.json({ error: "action은 'start', 'status', 'file' 중 하나여야 합니다." }, { status: 400 });
   } catch (e) {
-    cleanTmpFiles(prefix);
-    const errMsg = e instanceof Error ? e.message : String(e);
-    console.error("[download] 에러:", errMsg);
-    return NextResponse.json(
-      { error: `HD 저장 처리 중 오류: ${errMsg.slice(0, 300)}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `서버 오류: ${String(e).slice(0, 200)}` }, { status: 500 });
   }
 }
