@@ -325,7 +325,7 @@ export default function EditorPage() {
   const [downloading, setDownloading] = useState<string | null>(null); // "merged" | clipId | null
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  // HD 다운로드 핸들러
+  // HD 다운로드 핸들러 (저장 경로 선택 가능)
   const handleDownload = async (mode: "single" | "merged", clip?: EditClip) => {
     if (!selected?.ytVideoId) return;
     const dlId = mode === "merged" ? "merged" : clip?.id || "single";
@@ -354,16 +354,41 @@ export default function EditorPage() {
         return;
       }
 
-      // Blob으로 다운로드
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
-      const filename = filenameMatch ? filenameMatch[1] : `KContent_${mode}.mp4`;
+      const rawName = filenameMatch ? decodeURIComponent(filenameMatch[1]) : `KContent_${mode}.mp4`;
 
+      // showSaveFilePicker API로 저장 경로 선택 (Chrome 86+)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (typeof window !== "undefined" && (window as any).showSaveFilePicker) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: rawName,
+            types: [{
+              description: "MP4 Video",
+              accept: { "video/mp4": [".mp4"] },
+            }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return; // 성공
+        } catch (pickerErr: unknown) {
+          // 사용자가 취소한 경우 — 에러 아님
+          if (pickerErr instanceof Error && pickerErr.name === "AbortError") {
+            return;
+          }
+          // picker 실패 시 폴백으로 진행
+        }
+      }
+
+      // 폴백: 일반 다운로드 (브라우저 기본 다운로드 폴더)
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = rawName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
