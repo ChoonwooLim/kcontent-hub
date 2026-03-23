@@ -118,30 +118,8 @@ function downloadFile(content: string, filename: string, mime: string) {
 }
 
 /* ── YouTube IFrame Player 타입 ──────────────────────────── */
-interface YTPlayer {
-  playVideo(): void;
-  pauseVideo(): void;
-  seekTo(seconds: number, allowSeekAhead?: boolean): void;
-  getCurrentTime(): number;
-  getDuration(): number;
-  getPlayerState(): number;
-  setVolume(val: number): void;
-  getVolume(): number;
-  isMuted(): boolean;
-  mute(): void;
-  unMute(): void;
-  destroy(): void;
-}
+import type { YTPlayer } from "@/lib/youtube-player";
 
-declare global {
-  interface Window {
-    YT: {
-      Player: new (id: string, opts: Record<string, unknown>) => YTPlayer;
-      PlayerState: { PLAYING: number; PAUSED: number; ENDED: number };
-    };
-    onYouTubeIframeAPIReady: () => void;
-  }
-}
 
 /* ── 메인 컴포넌트 ───────────────────────────────────────── */
 export default function StudioPage() {
