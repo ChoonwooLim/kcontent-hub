@@ -33,6 +33,7 @@ const providers: Provider[] = [
 export const config: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
   providers,
+  secret: process.env.AUTH_SECRET || "kcontent-studio-secret-key-2026-orbitron",
   trustHost: true,
   pages: {
     signIn: '/login',
