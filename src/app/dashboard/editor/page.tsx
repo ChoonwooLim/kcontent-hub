@@ -1169,10 +1169,11 @@ export default function EditorPage() {
                               }}
                               onClick={() => {
                                 sessionStorage.setItem("studio_data", JSON.stringify({
-                                  videoId: selected.ytVideoId,
+                                  videoId: "",  // YouTube 모드 비활성화
                                   videoTitle: selected.title,
                                   channelTitle: selected.channel,
                                   title: selected.titleKo || selected.title,
+                                  downloadedFileUrl: `/api/downloads/${encodeURIComponent(vid.filename)}`,
                                   downloadedFilename: vid.filename,
                                   thumbnailTop: "",
                                   thumbnailBottom: "",

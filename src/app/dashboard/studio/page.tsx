@@ -21,6 +21,8 @@ type StudioData = {
   title: string;
   thumbnailTop: string;
   thumbnailBottom: string;
+  downloadedFileUrl?: string;
+  downloadedFilename?: string;
   script: { time: string; type: string; ko: string }[];
 };
 
@@ -125,6 +127,7 @@ import type { YTPlayer } from "@/lib/youtube-player";
 export default function StudioPage() {
   /* 상태 */
   const [videoId, setVideoId] = useState<string>("");
+  const [fileVideoUrl, setFileVideoUrl] = useState<string>("");  // 서버 다운로드 파일 URL
   const [urlInput, setUrlInput] = useState("");
   const [subs, setSubs] = useState<SubLine[]>(DEMO_SUBS);
   const [videoTitle, setVideoTitle] = useState("데모 영상");
@@ -141,6 +144,9 @@ export default function StudioPage() {
   const [subtitleError, setSubtitleError] = useState<string | null>(null);
   const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
 
+  const videoRef = useRef<HTMLVideoElement | null>(null);  // HTML5 video 플레이어
+  const isFileMode = !!fileVideoUrl && !videoId;  // 파일 모드 여부
+
   const playerRef = useRef<YTPlayer | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -151,15 +157,43 @@ export default function StudioPage() {
       const raw = sessionStorage.getItem("studio_data");
       if (raw) {
         const data: StudioData = JSON.parse(raw);
-        if (data.videoId) {
+        // 다운로드 파일이 있으면 파일 모드로
+        if (data.downloadedFileUrl) {
+          setFileVideoUrl(data.downloadedFileUrl);
+          setVideoId("");  // YouTube 모드 해제
+          setVideoTitle(data.downloadedFilename || data.title || data.videoTitle || "");
+        } else if (data.videoId) {
           setVideoId(data.videoId);
           setVideoTitle(data.title || data.videoTitle || "");
-          setSubs(scriptToSubs(data.script));
-          sessionStorage.removeItem("studio_data");
         }
+        if (data.script?.length) {
+          setSubs(scriptToSubs(data.script));
+        }
+        sessionStorage.removeItem("studio_data");
       }
     } catch { /* ignore */ }
   }, []);
+
+  /* ── HTML5 Video 플레이어 이벤트 ────────────────────────── */
+  useEffect(() => {
+    if (!isFileMode || !videoRef.current) return;
+    const v = videoRef.current;
+    const onLoaded = () => { setDuration(v.duration); setLoading(false); };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onTime = () => setCurrentTime(v.currentTime);
+    v.addEventListener("loadedmetadata", onLoaded);
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
+    v.addEventListener("timeupdate", onTime);
+    setLoading(true);
+    return () => {
+      v.removeEventListener("loadedmetadata", onLoaded);
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("timeupdate", onTime);
+    };
+  }, [isFileMode, fileVideoUrl]);
 
   /* ── YouTube IFrame API 로드 ───────────────────────────── */
   useEffect(() => {
@@ -173,9 +207,9 @@ export default function StudioPage() {
     window.onYouTubeIframeAPIReady = () => setYtReady(true);
   }, []);
 
-  /* ── 영상 ID 변경 시 플레이어 생성 ────────────────────── */
+  /* ── 영상 ID 변경 시 YouTube 플레이어 생성 (파일모드가 아닐 때만) ─── */
   useEffect(() => {
-    if (!ytReady || !videoId) return;
+    if (isFileMode || !ytReady || !videoId) return;
 
     // 기존 플레이어 파괴
     if (playerRef.current) {
@@ -191,12 +225,12 @@ export default function StudioPage() {
       height: "100%",
       playerVars: {
         autoplay: 0,
-        controls: 0,       // 커스텀 컨트롤 사용
+        controls: 0,
         modestbranding: 1,
         rel: 0,
         showinfo: 0,
         fs: 0,
-        iv_load_policy: 3, // 주석 비활성화
+        iv_load_policy: 3,
         disablekb: 1,
         playsinline: 1,
       },
@@ -214,13 +248,13 @@ export default function StudioPage() {
         },
       },
     } as Record<string, unknown>);
-  }, [ytReady, videoId]);
+  }, [ytReady, videoId, isFileMode]);
 
-  /* ── 현재 시간 싱크 (100ms 간격) ──────────────────────── */
+  /* ── 현재 시간 싱크 (100ms 간격) — YouTube 모드만 ──────── */
   useEffect(() => {
     if (tickRef.current) clearInterval(tickRef.current);
 
-    if (playing && playerRef.current) {
+    if (!isFileMode && playing && playerRef.current) {
       tickRef.current = setInterval(() => {
         if (playerRef.current) {
           setCurrentTime(playerRef.current.getCurrentTime());
@@ -229,50 +263,78 @@ export default function StudioPage() {
     }
 
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
-  }, [playing]);
+  }, [playing, isFileMode]);
 
-  /* ── 플레이어 컨트롤 ──────────────────────────────────── */
+  /* ── 플레이어 컨트롤 (YouTube + 파일 모드 통합) ──────── */
   const togglePlay = useCallback(() => {
-    if (!playerRef.current) return;
-    if (playing) {
-      playerRef.current.pauseVideo();
+    if (isFileMode) {
+      if (!videoRef.current) return;
+      if (playing) { videoRef.current.pause(); } else { videoRef.current.play(); }
     } else {
-      playerRef.current.playVideo();
+      if (!playerRef.current) return;
+      if (playing) { playerRef.current.pauseVideo(); } else { playerRef.current.playVideo(); }
     }
-  }, [playing]);
+  }, [playing, isFileMode]);
 
   const seekTo = useCallback((sec: number) => {
     setCurrentTime(sec);
-    if (playerRef.current) {
-      playerRef.current.seekTo(sec, true);
+    if (isFileMode) {
+      if (videoRef.current) videoRef.current.currentTime = sec;
+    } else {
+      if (playerRef.current) playerRef.current.seekTo(sec, true);
     }
-  }, []);
+  }, [isFileMode]);
 
   const toggleMute = useCallback(() => {
-    if (!playerRef.current) return;
-    if (playerRef.current.isMuted()) {
-      playerRef.current.unMute();
-      setMuted(false);
+    if (isFileMode) {
+      if (!videoRef.current) return;
+      videoRef.current.muted = !videoRef.current.muted;
+      setMuted(videoRef.current.muted);
     } else {
-      playerRef.current.mute();
-      setMuted(true);
+      if (!playerRef.current) return;
+      if (playerRef.current.isMuted()) {
+        playerRef.current.unMute();
+        setMuted(false);
+      } else {
+        playerRef.current.mute();
+        setMuted(true);
+      }
     }
-  }, []);
+  }, [isFileMode]);
 
-  /* ── URL 입력으로 영상 로드 ────────────────────────────── */
+  /* ── URL 입력으로 영상 로드 (YouTube URL / 파일 URL 모두 지원) ── */
   const loadFromUrl = () => {
     const input = urlInput.trim();
     if (!input) return;
+    
+    // 서버 파일 URL인 경우 (/api/downloads/ 경로)
+    if (input.startsWith("/api/downloads/") || input.includes("/api/downloads/")) {
+      setFileVideoUrl(input);
+      setVideoId("");
+      setVideoTitle(decodeURIComponent(input.split("/").pop() || "영상 파일"));
+      return;
+    }
+    
     try {
       const u = new URL(input);
+      // YouTube URL
       let vid = "";
       if (u.hostname.includes("youtu.be")) vid = u.pathname.slice(1);
-      else vid = u.searchParams.get("v") || "";
+      else if (u.hostname.includes("youtube")) vid = u.searchParams.get("v") || "";
       if (vid) {
+        setFileVideoUrl("");
         setVideoId(vid);
         setVideoTitle(input);
+        return;
       }
-    } catch { /* ignore */ }
+      // 일반 영상 파일 URL
+      if (input.match(/\.(mp4|webm|mkv|mov)$/i) || u.pathname.includes("/api/downloads/")) {
+        setFileVideoUrl(input);
+        setVideoId("");
+        setVideoTitle(decodeURIComponent(u.pathname.split("/").pop() || "영상"));
+        return;
+      }
+    } catch { /* not a valid URL */ }
   };
 
   /* ── 자막 수정 ────────────────────────────────────────── */
@@ -321,7 +383,7 @@ export default function StudioPage() {
                 className="input" value={urlInput}
                 onChange={e => setUrlInput(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && loadFromUrl()}
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="YouTube URL 또는 /api/downloads/파일명.mp4"
               />
             </div>
             <button className="btn btn-brand" onClick={loadFromUrl} disabled={!urlInput.trim()}
@@ -330,7 +392,7 @@ export default function StudioPage() {
             </button>
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-            💡 AI 대본 엔진에서 &quot;편집 스튜디오로&quot; 버튼을 클릭하면 자동으로 영상과 자막이 로드됩니다.
+            💡 YouTube URL, 영상 파일 경로 입력 또는 편집기에서 &quot;자막 스튜디오로 전송&quot; 클릭 시 자동 로드됩니다.
           </div>
         </div>
       )}
@@ -360,9 +422,19 @@ export default function StudioPage() {
             border: "1px solid var(--border-default)", aspectRatio: "16/9",
             position: "relative",
           }}>
-            {videoId ? (
+            {(videoId || isFileMode) ? (
               <>
-                <div id="yt-player" style={{ width: "100%", height: "100%" }} />
+                {/* 파일 모드: HTML5 video */}
+                {isFileMode ? (
+                  <video
+                    ref={videoRef}
+                    src={fileVideoUrl}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    preload="metadata"
+                  />
+                ) : (
+                  <div id="yt-player" style={{ width: "100%", height: "100%" }} />
+                )}
 
                 {/* 로딩 */}
                 {loading && (
@@ -385,6 +457,18 @@ export default function StudioPage() {
                   </div>
                 )}
 
+                {/* 소스 표시 (파일 / YouTube) */}
+                {isFileMode && (
+                  <div style={{
+                    position: "absolute", top: 10, left: 12,
+                    background: "rgba(139,92,246,0.8)", color: "white",
+                    padding: "3px 8px", borderRadius: 5,
+                    fontSize: 10, fontWeight: 700, zIndex: 3, pointerEvents: "none",
+                  }}>
+                    📁 로컬 파일
+                  </div>
+                )}
+
                 {/* 시간 표시 */}
                 <div style={{
                   position: "absolute", top: 10, right: 12,
@@ -396,7 +480,7 @@ export default function StudioPage() {
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </div>
 
-                {/* 클릭으로 재생/일시정지 (투명 오버레이) */}
+                {/* 클릭으로 재생/일시정지 */}
                 <div
                   onClick={togglePlay}
                   style={{
@@ -409,8 +493,8 @@ export default function StudioPage() {
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #1a0a2e, #0a1628, #0d2818)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <div style={{ textAlign: "center", color: "rgba(255,255,255,0.2)", fontSize: 13 }}>
                   <AlertCircle size={36} style={{ opacity: 0.3, margin: "0 auto 10px", display: "block" }} />
-                  YouTube URL을 입력하거나<br />
-                  AI 대본 엔진에서 &quot;편집 스튜디오로&quot; 클릭
+                  YouTube URL 또는 영상 파일 경로를 입력하거나<br />
+                  편집기에서 &quot;자막 스튜디오로 전송&quot; 클릭
                 </div>
               </div>
             )}
