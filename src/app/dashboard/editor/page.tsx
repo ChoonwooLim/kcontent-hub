@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  Scissors, Plus, Trash2, ArrowRight, Play, Eye,
+  Scissors, Plus, Trash2, ArrowRight, Play,
   Loader, AlertCircle, ChevronRight, Check, X, Film,
   Zap, Download
 } from "lucide-react";
@@ -424,35 +424,26 @@ export default function EditorPage() {
 
         if (status.status === "done") {
           done = true;
+          setDownloadMessage("✅ 서버에 저장 완료!");
 
-          // 3단계: 파일 다운로드
-          setDownloadMessage("파일 받는 중...");
-          const fileRes = await fetch(`/api/pipeline/${selected.id}/download`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "file", jobId }),
-          });
-
-          if (!fileRes.ok) { setDownloadError("파일 다운로드 실패"); return; }
-
-          const blob = await fileRes.blob();
-          const disposition = fileRes.headers.get("Content-Disposition") || "";
-          const nameMatch = disposition.match(/filename="?([^"]+)"?/);
-          const rawName = nameMatch ? decodeURIComponent(nameMatch[1]) : `KContent_${mode}.mp4`;
-
-          // 미리보기 모달 표시 + 다운로드 목록에 추가
-          const blobUrl = URL.createObjectURL(blob);
-          setPreviewVideo({ url: blobUrl, filename: rawName, blob });
-          setDownloadedVideos(prev => [...prev, {
-            id: `dl_${Date.now()}`,
-            filename: rawName,
-            url: blobUrl,
-            blob,
-            size: blob.size,
-            mode: mode,
-            clipCount: clipsToSend.length,
-            createdAt: new Date(),
-          }]);
+          // 서버 목록 새로고침
+          try {
+            const dlRes = await fetch("/api/downloads");
+            if (dlRes.ok) {
+              const dlData = await dlRes.json();
+              if (dlData.files) {
+                setDownloadedVideos(dlData.files.map((f: { id: string; filename: string; url: string; size: number; createdAt: string }) => ({
+                  id: f.id,
+                  filename: f.filename,
+                  url: f.url,
+                  size: f.size,
+                  mode: f.filename.includes("merged") ? "merged" : "single",
+                  clipCount: 0,
+                  createdAt: new Date(f.createdAt),
+                })));
+              }
+            }
+          } catch { /* ignore */ }
         }
       }
     } catch (e) {
@@ -466,7 +457,7 @@ export default function EditorPage() {
 
   // 다운로드 완료된 영상 목록
   interface DownloadedVideo {
-    id: string; filename: string; url: string; blob?: Blob;
+    id: string; filename: string; url: string;
     size: number; mode: string; clipCount: number; createdAt: Date;
   }
   const [downloadedVideos, setDownloadedVideos] = useState<DownloadedVideo[]>([]);
@@ -499,45 +490,7 @@ export default function EditorPage() {
     })();
   }, []);
 
-  // 미리보기 영상 상태
-  const [previewVideo, setPreviewVideo] = useState<{ url: string; filename: string; blob: Blob | null } | null>(null);
 
-  // 미리보기 닫기
-  const closePreviewVideo = () => {
-    if (previewVideo) URL.revokeObjectURL(previewVideo.url);
-    setPreviewVideo(null);
-  };
-
-  // 미리보기 후 저장
-  const savePreviewFile = async () => {
-    if (!previewVideo) return;
-    // blob이 있으면 File System Access API 사용
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (previewVideo.blob && typeof window !== "undefined" && (window as any).showSaveFilePicker) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: previewVideo.filename,
-          types: [{ description: "MP4 Video", accept: { "video/mp4": [".mp4"] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(previewVideo.blob);
-        await writable.close();
-        closePreviewVideo();
-        return;
-      } catch (err: unknown) {
-        if (err instanceof Error && err.name === "AbortError") return;
-      }
-    }
-    // 폴백: URL 다운로드
-    const a = document.createElement("a");
-    a.href = previewVideo.url;
-    a.download = previewVideo.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    closePreviewVideo();
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1200 }}>
@@ -1130,7 +1083,7 @@ export default function EditorPage() {
                               background: "rgba(0,0,0,0.25)", cursor: "pointer",
                               transition: "background 0.2s",
                             }}
-                            onClick={() => setPreviewVideo({ url: vid.url, filename: vid.filename, blob: vid.blob || null })}
+                            onClick={() => window.open(vid.url, "_blank")}
                             onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.1)")}
                             onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.25)")}
                           >
@@ -1341,68 +1294,7 @@ export default function EditorPage() {
         </div>
       </div>
 
-      {/* ── 다운로드 영상 미리보기 모달 ── */}
-      {previewVideo && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)",
-        }} onClick={closePreviewVideo}>
-          <div style={{
-            background: "var(--bg-card)", borderRadius: 16, overflow: "hidden",
-            maxWidth: 900, width: "90vw", boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
-            border: "1px solid var(--border-subtle)",
-          }} onClick={e => e.stopPropagation()}>
-            {/* 헤더 */}
-            <div style={{
-              padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Eye size={16} color="#06b6d4" />
-                <span style={{ fontSize: 14, fontWeight: 700 }}>다운로드 영상 미리보기</span>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{previewVideo.filename}</span>
-                <button className="btn btn-ghost btn-sm" style={{ padding: "4px 6px" }} onClick={closePreviewVideo}>
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-            {/* 비디오 플레이어 */}
-            <div style={{ background: "#000", width: "100%", aspectRatio: "16/9" }}>
-              <video
-                src={previewVideo.url}
-                controls
-                autoPlay
-                style={{ width: "100%", height: "100%", objectFit: "contain" }}
-              />
-            </div>
-            {/* 하단 버튼 */}
-            <div style={{
-              padding: "14px 18px", borderTop: "1px solid var(--border-subtle)",
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-            }}>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {previewVideo.blob ? `${(previewVideo.blob.size / 1024 / 1024).toFixed(1)} MB · MP4` : "MP4"}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" style={{ gap: 4, padding: "8px 16px" }}
-                  onClick={closePreviewVideo}>
-                  <X size={12} />닫기
-                </button>
-                <button className="btn btn-brand btn-sm" style={{
-                  gap: 6, padding: "8px 20px",
-                  background: "linear-gradient(135deg, #06b6d4, #0ea5e9)",
-                  borderColor: "#06b6d4",
-                }} onClick={savePreviewFile}>
-                  <Download size={13} />파일 저장
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
     </div>
