@@ -28,6 +28,7 @@ export async function POST(
 
       // 1) YouTube 자막 추출
       let transcript: { time: string; text: string; startSec: number; endSec: number }[] = [];
+      let transcriptError = "";
       try {
         const { YoutubeTranscript } = await import("youtube-transcript");
         const raw = await YoutubeTranscript.fetchTranscript(video.ytVideoId || video.originalUrl);
@@ -41,15 +42,58 @@ export async function POST(
             endSec: Math.round(endSec * 10) / 10,
           };
         });
-      } catch {
-        return NextResponse.json({
-          error: "자막 추출 실패 — YouTube 자막이 없어 AI 분석이 불가능합니다.",
-          suggestion: "수동으로 클립을 추가해 주세요.",
-        }, { status: 422 });
+      } catch (err) {
+        transcriptError = String(err);
       }
 
+      // 자막이 없으면 → 기본 균등분할 클립 자동 생성 (fallback)
       if (transcript.length === 0) {
-        return NextResponse.json({ error: "자막이 비어 있어 분석할 수 없습니다" }, { status: 422 });
+        const totalMin = 10; // 추정 영상 길이 10분
+        const totalSec = totalMin * 60;
+        const clipDuration = 40; // 40초씩
+        const clipCount = Math.min(8, Math.floor(totalSec / clipDuration));
+        const interval = Math.floor(totalSec / clipCount);
+
+        await prisma.editClip.deleteMany({ where: { videoId: id } });
+
+        const fallbackClips = [];
+        const labels = ["훅", "반응", "하이라이트", "나레이션", "문화 체험", "반응", "하이라이트", "엔딩"];
+        for (let i = 0; i < clipCount; i++) {
+          const startSec = i * interval;
+          const endSec = Math.min(startSec + clipDuration, totalSec);
+          const clip = await prisma.editClip.create({
+            data: {
+              videoId: id,
+              order: i,
+              startTime: secToTime(startSec),
+              endTime: secToTime(endSec),
+              label: labels[i] || "하이라이트",
+              note: `⏱️ 자동 분할 클립 #${i + 1} (자막 없음 — 원하는 구간으로 수정하세요)`,
+              included: true,
+            },
+          });
+          fallbackClips.push(clip);
+        }
+
+        const totalSeconds = fallbackClips.reduce((acc, clip) => {
+          return acc + (timeToSec(clip.endTime) - timeToSec(clip.startTime));
+        }, 0);
+
+        await prisma.pipelineVideo.update({
+          where: { id },
+          data: { stage: "요약 편집", summaryDuration: Math.round(totalSeconds) },
+        });
+
+        return NextResponse.json({
+          success: true,
+          clipCount: fallbackClips.length,
+          totalSeconds: Math.round(totalSeconds),
+          summary: `YouTube 자막을 추출할 수 없어 ${clipCount}개 구간을 자동 분할했습니다. 원하는 구간으로 수정하세요.`,
+          clips: fallbackClips,
+          fallback: true,
+          transcriptError: transcriptError.slice(0, 200),
+          message: `자막 없음 — ${clipCount}개 구간을 자동 분할했습니다. 클립 시간을 직접 조정해주세요.`,
+        });
       }
 
       // 2) 전체 자막을 GPT-4o에게 분석 요청
