@@ -7,14 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// API 키 저장 (사용자별)
+// API 키 저장 (사용자/워크스페이스별)
 model ApiKey {
-  id        String   @id @default(cuid())
-  service   String   @unique // "youtube" | "openai" | "deepl" | "tiktok"
-  value     String
-  verified  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String     @id @default(cuid())
+  service     String     @unique // "youtube" | "openai" | "deepl" | "tiktok"
+  value       String
+  verified    Boolean    @default(false)
+  
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
 // 파이프라인 영상 (소재수집 → 배포 전 과정)
@@ -46,6 +50,10 @@ model PipelineVideo {
   translatedJson    String?  @db.Text   // 한글 변환된 자막 JSON
   processedVideoUrl String?             // FFmpeg 처리된 HD 영상 경로/URL
   summaryDuration   Int?                // 요약 편집 영상 길이 (초)
+  
+  workspaceId       String
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -101,6 +109,10 @@ model Channel {
   handle      String
   channelId   String?
   accessToken String?
+  
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -117,6 +129,107 @@ model Script {
   thumbnailBottom String?             // 썸네일 하단 카피
   scriptJson     String   @db.Text    // ScriptLine[] JSON
   sceneCount     Int      @default(0) // 씬 수
+  
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------
+// NextAuth & Multi-tenant (SaaS) Models
+// ---------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?   // For credentials provider
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  
+  // 회원이 소속된 워크스페이스 목록
+  workspaceMembers WorkspaceMember[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String   // 기관명, 팀명 등
+  slug        String   @unique
+  logoUrl     String?  // 워크스페이스 로고
+  
+  members     WorkspaceMember[]
+  
+  // 격리 데이터
+  apiKeys     ApiKey[]
+  videos      PipelineVideo[]
+  channels    Channel[]
+  scripts     Script[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  role        Role      @default(MEMBER)
+  
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, workspaceId])
 }

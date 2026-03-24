@@ -50,7 +50,7 @@ function ScoreMeter({ score, grade }: { score: number; grade: "S" | "A" | "B" })
   );
 }
 
-function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void }) {
+function VideoModal({ video, onClose, onSaveAndEdit }: { video: VideoItem; onClose: () => void; onSaveAndEdit: (v: VideoItem) => void; }) {
   const ytUrl = `https://www.youtube.com/watch?v=${video.ytId}`;
   return (
     <div onClick={onClose} style={{
@@ -84,9 +84,7 @@ function VideoModal({ video, onClose }: { video: VideoItem; onClose: () => void 
             <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
               <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}><ExternalLink size={12} />YouTube</button>
             </a>
-            <a href={`/dashboard/editor?saveYtId=${video.ytId}`} style={{ textDecoration: "none" }}>
-              <button className="btn btn-brand btn-sm" style={{ gap: 6, background: "linear-gradient(135deg, #f59e0b, #f97316)", borderColor: "#f59e0b" }}><Scissors size={12} />영상요약편집</button>
-            </a>
+            <button className="btn btn-brand btn-sm" style={{ gap: 6, background: "linear-gradient(135deg, #f59e0b, #f97316)", borderColor: "#f59e0b" }} onClick={() => onSaveAndEdit(video)}><Scissors size={12} />영상요약편집</button>
             <a href={`/dashboard/script?url=${encodeURIComponent(ytUrl)}`} style={{ textDecoration: "none" }}>
               <button className="btn btn-brand btn-sm" style={{ gap: 6 }}><Zap size={12} />AI 대본 생성</button>
             </a>
@@ -381,7 +379,7 @@ export default function HunterPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1100 }}>
-      {playing && <VideoModal video={playing} onClose={() => setPlaying(null)} />}
+      {playing && <VideoModal video={playing} onClose={() => setPlaying(null)} onSaveAndEdit={handleSaveAndEdit} />}
       {outreachModal && <OutreachModal data={outreachModal} onClose={() => setOutreachModal(null)} />}
 
       <div>

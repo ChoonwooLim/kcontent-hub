@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 
 // 원작자 알림 메시지 템플릿 — 언어별
 const OUTREACH_TEMPLATES: Record<string, (channel: string, title: string) => string> = {
@@ -25,7 +26,18 @@ function generateOutreachMessage(channel: string, title: string, lang?: string):
 // GET /api/pipeline — 전체 파이프라인 영상 목록
 export async function GET() {
   try {
+    const session = await auth();
+    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { workspaceMembers: true },
+    });
+    const workspaceId = user?.workspaceMembers[0]?.workspaceId;
+    if (!workspaceId) return NextResponse.json({ videos: [] });
+
     const videos = await prisma.pipelineVideo.findMany({
+      where: { workspaceId },
       orderBy: { createdAt: "desc" },
       include: { publishes: true, outreaches: true, editClips: true },
     });
@@ -38,6 +50,16 @@ export async function GET() {
 // POST /api/pipeline — 새 영상 추가 (소재 수집기에서 호출)
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    
+    const dbUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { workspaceMembers: true },
+    });
+    const workspaceId = dbUser?.workspaceMembers[0]?.workspaceId;
+    if (!workspaceId) return NextResponse.json({ error: "No workspace" }, { status: 403 });
+
     const body = await req.json();
 
     const {
@@ -49,7 +71,7 @@ export async function POST(req: NextRequest) {
     // 중복 검사: 같은 YouTube 영상이 이미 저장되어 있으면 기존 레코드 반환
     if (ytVideoId) {
       const existing = await prisma.pipelineVideo.findFirst({
-        where: { ytVideoId },
+        where: { ytVideoId, workspaceId },
         include: { outreaches: true },
       });
       if (existing) {
@@ -65,6 +87,7 @@ export async function POST(req: NextRequest) {
     // 영상 저장
     const video = await prisma.pipelineVideo.create({
       data: {
+        workspaceId,
         title: title || "",
         channel: channel || "",
         channelId: channelId || null,

@@ -1,9 +1,11 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, redirect } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
-  ChevronRight, Bell, Layers, BarChart2, Scissors, Map
+  ChevronRight, Bell, Layers, BarChart2, Scissors, Map,
+  LogOut, ChevronDown, Building2
 } from "lucide-react";
 
 const NAV = [
@@ -23,6 +25,16 @@ const NAV = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { data: session, status } = useSession({
+    required: true,
+    onUnauthenticated() {
+      redirect("/login");
+    },
+  });
+
+  if (status === "loading") {
+    return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-void)", color: "var(--text-muted)" }}>인증 확인 중...</div>;
+  }
 
   return (
     <div className="app-shell">
@@ -39,6 +51,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div style={{ fontSize: 10, color: "var(--text-muted)" }}>v2.0 · Production</div>
             </div>
           </Link>
+        </div>
+
+        {/* Workspace Switcher */}
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-subtle)" }}>
+          <button className="nav-item" style={{ width: "100%", opacity: 1, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", padding: "8px 12px" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ background: "#4f46e5", borderRadius: 4, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Building2 size={14} color="white" />
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Team Alpha</span>
+            </div>
+            <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
+          </button>
         </div>
 
         {/* Nav */}
@@ -95,7 +120,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Bell size={15} />
               <span style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, background: "var(--accent-red)", borderRadius: "50%" }} />
             </button>
-            <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--gradient-brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "white", cursor: "pointer" }}>Y</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8, paddingLeft: 12, borderLeft: "1px solid var(--border-subtle)" }}>
+              <div style={{ textAlign: "right", display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{session?.user?.name || session?.user?.email?.split('@')[0] || "유저"}</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Admin</span>
+              </div>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--gradient-brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "white" }}>
+                {session?.user?.email?.charAt(0).toUpperCase() || "U"}
+              </div>
+              <button onClick={() => signOut()} className="btn-icon" style={{ marginLeft: 4 }} title="로그아웃">
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
         </header>
 
