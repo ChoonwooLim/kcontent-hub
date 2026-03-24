@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
-  ChevronRight, Bell, Layers, BarChart2, Scissors
+  ChevronRight, Bell, Layers, BarChart2, Scissors, Map
 } from "lucide-react";
 
 const NAV = [
@@ -17,6 +17,7 @@ const NAV = [
   { section: "관리" },
   { href: "/dashboard/channels", label: "채널 관리", icon: Youtube },
   { href: "/dashboard/analytics", label: "수익 분석", icon: BarChart2 },
+  { href: "/dashboard/plan", label: "개발계획", icon: Map },
   { href: "/dashboard/settings", label: "API 설정", icon: Settings },
 ];
 
