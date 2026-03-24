@@ -32,22 +32,27 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body: Record<string, string> = await req.json();
-    // 빈 값은 저장 안 함
     const entries = Object.entries(body).filter(([, v]) => v && v.trim());
     if (entries.length === 0) return NextResponse.json({ saved: 0 });
+
+    // workspace ID 조회
+    let workspaceId = "";
+    try {
+      const ws = await prisma.workspace.findFirst();
+      workspaceId = ws?.id || "";
+    } catch { /* ignore */ }
 
     const results = await Promise.all(
       entries.map(([service, value]) =>
         prisma.apiKey.upsert({
           where: { service },
           update: { value, verified: false },
-          create: { service, value, verified: false },
+          create: { service, value, verified: false, workspaceId },
         })
       )
     );
     return NextResponse.json({ saved: results.length });
   } catch (e) {
-    // DB 저장 실패 시에도 200 (클라이언트는 localStorage fallback 사용)
     return NextResponse.json({ error: "DB 연결 없음 — 환경변수로 API 키를 설정하세요", detail: String(e) }, { status: 503 });
   }
 }

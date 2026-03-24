@@ -33,6 +33,7 @@ const providers: Provider[] = [
 export const config: NextAuthConfig = {
   adapter: PrismaAdapter(prisma),
   providers,
+  trustHost: true,
   pages: {
     signIn: '/login',
   },

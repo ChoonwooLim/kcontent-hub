@@ -6,6 +6,8 @@ RUN npm install --legacy-peer-deps --ignore-scripts
 COPY ./ ./
 RUN npx prisma generate 2>/dev/null || true
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV AUTH_SECRET="kcontent-studio-secret-key-2026-orbitron"
+ENV AUTH_TRUST_HOST=true
 RUN npm run build
 RUN mkdir -p public prisma
 
@@ -23,6 +25,8 @@ RUN apk add --no-cache openssl ffmpeg python3 curl \
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3555
+ENV AUTH_SECRET="kcontent-studio-secret-key-2026-orbitron"
+ENV AUTH_TRUST_HOST=true
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json

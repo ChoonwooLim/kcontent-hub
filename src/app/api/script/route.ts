@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ script: updated, action: "updated" });
     }
 
+    // workspace 조회
+    let workspaceId = "";
+    try { const ws = await prisma.workspace.findFirst(); workspaceId = ws?.id || ""; } catch { /* ignore */ }
+
     const created = await prisma.script.create({
       data: {
         videoId,
@@ -67,6 +71,7 @@ export async function POST(req: NextRequest) {
         thumbnailBottom: thumbnailBottom || "",
         scriptJson: JSON.stringify(script),
         sceneCount: Array.isArray(script) ? script.length : 0,
+        workspaceId,
       },
     });
     return NextResponse.json({ script: created, action: "created" });

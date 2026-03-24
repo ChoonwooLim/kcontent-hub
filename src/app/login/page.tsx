@@ -16,15 +16,16 @@ export default function LoginPage() {
 
     try {
       const res = await signIn("credentials", {
-        redirect: true,
+        redirect: false,
         email,
         password,
-        callbackUrl: "/dashboard"
       });
       if (res?.error) {
         setError("이메일이나 비밀번호가 맞지 않습니다.");
+      } else {
+        window.location.href = "/dashboard";
       }
-    } catch (err) {
+    } catch {
       setError("오류가 발생했습니다.");
     } finally {
       setLoading(false);
