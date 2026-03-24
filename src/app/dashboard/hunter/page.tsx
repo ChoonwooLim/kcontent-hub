@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, SlidersHorizontal, Play, Eye, ThumbsUp, Clock,
@@ -21,7 +21,7 @@ const LANGS = [
   { code: "zh",  label: "🇨🇳 中文" },
   { code: "id",  label: "🇮🇩 Bahasa" },
 ];
-const STORAGE_KEY = "kcontent_hunter_videos";
+
 
 type VideoItem = {
   id: string; ytId: string; title: string; channel: string;
@@ -235,14 +235,30 @@ export default function HunterPage() {
   const [searchLang, setSearchLang] = useState("all");
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [videos, setVideos] = useState<VideoItem[]>(() => {
-    try {
-      const saved = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  const [videos, setVideos] = useState<VideoItem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [playing, setPlaying] = useState<VideoItem | null>(null);
+
+  // DB에서 최근 검색 결과 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/hunter/history");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.videos && data.videos.length > 0) {
+          setVideos(data.videos);
+        }
+        if (data.searchParams) {
+          setSelectedNiche(data.searchParams.niche || "전체");
+          setMaxSubs(String(data.searchParams.maxSubs || 50000));
+          setMaxViews(String(data.searchParams.maxViews || 20000));
+          setDayRange(String(data.searchParams.dayRange || 7));
+          setSearchLang(data.searchParams.lang || "all");
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   // 저장 관련 상태
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -367,7 +383,21 @@ export default function HunterPage() {
         return;
       }
       setVideos(data.videos ?? []);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.videos ?? []));
+      // DB에 검색 결과 저장
+      try {
+        await fetch("/api/hunter/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            niche: selectedNiche,
+            maxSubs: parseInt(maxSubs),
+            maxViews: parseInt(maxViews),
+            dayRange: parseInt(dayRange),
+            lang: searchLang,
+            videos: data.videos ?? [],
+          }),
+        });
+      } catch { /* DB 저장 실패 무시 */ }
     } catch (e) {
       setError(`네트워크 오류: ${String(e)}`);
     } finally {
@@ -470,7 +500,7 @@ export default function HunterPage() {
           <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 6 }}>
             {filtered.length}개 발굴됨 (S등급: {filtered.filter(v => v.grade === "S").length}개)
           </span>
-          <button onClick={() => { setVideos([]); localStorage.removeItem(STORAGE_KEY); }}
+          <button onClick={() => { setVideos([]); }}
             style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
             초기화
           </button>

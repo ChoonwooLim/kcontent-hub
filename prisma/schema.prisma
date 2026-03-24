@@ -80,6 +80,23 @@ model DownloadedFile {
   createdAt     DateTime      @default(now())
 }
 
+// 소재수집기 검색 기록 (PostgreSQL 영구 저장)
+model HunterSearch {
+  id            String   @id @default(cuid())
+  niche         String   @default("전체")
+  maxSubs       Int      @default(50000)
+  maxViews      Int      @default(20000)
+  dayRange      Int      @default(7)
+  lang          String   @default("all")
+  resultCount   Int      @default(0)
+  resultsJson   String   @db.Text    // VideoItem[] JSON
+  
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+}
+
 // 원작자 알림 기록 (댓글 / 이메일 / DM)
 model CreatorOutreach {
   id           String        @id @default(cuid())
@@ -225,6 +242,7 @@ model Workspace {
   channels    Channel[]
   scripts     Script[]
   downloadedFiles DownloadedFile[]
+  hunterSearches  HunterSearch[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
