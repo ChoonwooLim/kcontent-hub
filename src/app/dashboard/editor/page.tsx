@@ -1158,33 +1158,63 @@ export default function EditorPage() {
                           <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>
                             {(vid.size / 1024 / 1024).toFixed(1)} MB · {vid.createdAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                           </div>
-                          {/* 자막스튜디오 전송 버튼 */}
-                          <Link href="/dashboard/studio">
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {/* 자막스튜디오 전송 버튼 */}
+                            <Link href="/dashboard/studio" style={{ flex: 1 }}>
+                              <button
+                                className="btn btn-brand btn-sm"
+                                style={{
+                                  width: "100%", gap: 6, fontSize: 11, padding: "6px 10px",
+                                  background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                                  borderColor: "#8b5cf6",
+                                }}
+                                onClick={() => {
+                                  sessionStorage.setItem("studio_data", JSON.stringify({
+                                    videoId: "",
+                                    ytVideoId: selected.ytVideoId,
+                                    videoTitle: selected.title,
+                                    channelTitle: selected.channel,
+                                    title: selected.titleKo || selected.title,
+                                    downloadedFileUrl: `https://kcontentshub.twinverse.org/api/downloads/${encodeURIComponent(vid.filename)}`,
+                                    downloadedFilename: vid.filename,
+                                    thumbnailTop: "",
+                                    thumbnailBottom: "",
+                                    script: selected.scriptJson ? JSON.parse(selected.scriptJson) : [],
+                                  }));
+                                }}
+                              >
+                                <Film size={11} />자막 스튜디오로 전송
+                              </button>
+                            </Link>
+                            {/* 삭제 버튼 */}
                             <button
-                              className="btn btn-brand btn-sm"
+                              className="btn btn-sm"
                               style={{
-                                width: "100%", gap: 6, fontSize: 11, padding: "6px 10px",
-                                background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
-                                borderColor: "#8b5cf6",
+                                padding: "6px 10px", fontSize: 11,
+                                background: "rgba(239,68,68,0.1)", color: "#f87171",
+                                border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6,
                               }}
-                              onClick={() => {
-                                sessionStorage.setItem("studio_data", JSON.stringify({
-                                  videoId: "",  // 재생은 파일 모드
-                                  ytVideoId: selected.ytVideoId,  // 자막 추출용 원본 YouTube ID
-                                  videoTitle: selected.title,
-                                  channelTitle: selected.channel,
-                                  title: selected.titleKo || selected.title,
-                                  downloadedFileUrl: `https://kcontentshub.twinverse.org/api/downloads/${encodeURIComponent(vid.filename)}`,
-                                  downloadedFilename: vid.filename,
-                                  thumbnailTop: "",
-                                  thumbnailBottom: "",
-                                  script: selected.scriptJson ? JSON.parse(selected.scriptJson) : [],
-                                }));
+                              title="목록에서 삭제"
+                              onClick={async () => {
+                                if (!confirm(`"${vid.filename}"을(를) 삭제하시겠습니까?\n서버 파일과 DB 레코드가 모두 삭제됩니다.`)) return;
+                                try {
+                                  const res = await fetch("/api/downloads", {
+                                    method: "DELETE",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: vid.id }),
+                                  });
+                                  if (res.ok) {
+                                    setDownloadedVideos(prev => prev.filter(v => v.id !== vid.id));
+                                  } else {
+                                    const data = await res.json();
+                                    alert(`삭제 실패: ${data.error}`);
+                                  }
+                                } catch (e) { alert(`삭제 오류: ${e}`); }
                               }}
                             >
-                              <Film size={11} />자막 스튜디오로 전송
+                              🗑️
                             </button>
-                          </Link>
+                          </div>
                         </div>
                       </div>
                     ))}

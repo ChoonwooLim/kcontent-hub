@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { existsSync, unlinkSync } from "fs";
+import path from "path";
 
 const REMOTE_BASE = "https://kcontentshub.twinverse.org";
+const MEDIA_DIR = path.join(process.cwd(), "media", "downloads");
+const LEGACY_DIR = path.join(process.cwd(), "tmp_downloads");
 
 // GET /api/downloads — DB에서 다운로드 파일 목록 조회 (URL은 항상 Orbitron 서버)
 export async function GET() {
@@ -25,7 +29,6 @@ export async function GET() {
         videoTitle: f.video?.title || "",
         ytVideoId: f.video?.ytVideoId || "",
         thumbnail: f.video?.thumbnail || "",
-        // 항상 Orbitron 서버에서 파일을 가져옴
         url: `${REMOTE_BASE}/api/downloads/${encodeURIComponent(f.filename)}`,
         createdAt: f.createdAt.toISOString(),
       })),
@@ -56,6 +59,40 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ file: record }, { status: 201 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
+// DELETE /api/downloads — 다운로드 파일 삭제 (DB + 서버 파일)
+export async function DELETE(req: NextRequest) {
+  try {
+    const { id } = await req.json();
+    if (!id) return NextResponse.json({ error: "id가 필요합니다." }, { status: 400 });
+
+    // DB에서 레코드 조회
+    const file = await prisma.downloadedFile.findUnique({ where: { id } });
+    if (!file) return NextResponse.json({ error: "레코드를 찾을 수 없습니다." }, { status: 404 });
+
+    // 서버 파일 삭제 시도 (여러 경로 검색)
+    const possiblePaths = [
+      file.filepath,
+      path.join(MEDIA_DIR, file.filename),
+      path.join(MEDIA_DIR, "saved", file.filename),
+      path.join(LEGACY_DIR, file.filename),
+      path.join(LEGACY_DIR, "saved", file.filename),
+    ];
+
+    for (const fp of possiblePaths) {
+      if (fp && existsSync(fp)) {
+        try { unlinkSync(fp); } catch { /* ignore */ }
+      }
+    }
+
+    // DB 레코드 삭제
+    await prisma.downloadedFile.delete({ where: { id } });
+
+    return NextResponse.json({ success: true, deleted: file.filename });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
