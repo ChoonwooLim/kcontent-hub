@@ -20,6 +20,7 @@ model ApiKey {
 // 파이프라인 영상 (소재수집 → 배포 전 과정)
 model PipelineVideo {
   id           String   @id @default(cuid())
+  workspaceId  String   @default("")  // Orbitron 배포 환경 호환용
   title        String
   channel      String
   channelId    String?  // YouTube 채널 ID (원작자 연락용)
