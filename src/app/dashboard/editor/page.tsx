@@ -528,14 +528,14 @@ export default function EditorPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 600, overflowY: "auto" }}>
               {videos.map(v => (
-                <div key={v.id} onClick={() => setSelectedId(v.id)}
+                <div key={v.id}
                   className="card" style={{
                     padding: "10px 12px", cursor: "pointer",
                     borderLeft: selectedId === v.id ? "3px solid #818cf8" : "3px solid transparent",
                     background: selectedId === v.id ? "rgba(99,102,241,0.04)" : undefined,
-                    transition: "all 0.15s",
+                    transition: "all 0.15s", position: "relative",
                   }}>
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10 }} onClick={() => setSelectedId(v.id)}>
                     {v.thumbnail && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={v.thumbnail} alt="" style={{ width: 60, height: 34, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
@@ -548,8 +548,42 @@ export default function EditorPage() {
                         {v.channel} · {v.duration || "?"}
                       </div>
                     </div>
+                    {/* 삭제 버튼 */}
+                    <button
+                      style={{
+                        position: "absolute", top: 6, right: 6,
+                        background: "rgba(148,163,184,0.15)", border: "none",
+                        borderRadius: 4, width: 20, height: 20,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", color: "#94a3b8", fontSize: 12,
+                        opacity: 0.5, transition: "opacity 0.2s",
+                      }}
+                      title="목록에서 제거"
+                      onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = "0.5")}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!confirm(`"${v.title}"\n파이프라인 목록에서 제거하시겠습니까?`)) return;
+                        try {
+                          const res = await fetch("/api/pipeline", {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: v.id }),
+                          });
+                          if (res.ok) {
+                            setVideos(prev => prev.filter(vid => vid.id !== v.id));
+                            if (selectedId === v.id) setSelectedId(null);
+                          } else {
+                            const data = await res.json();
+                            alert(`삭제 실패: ${data.error}`);
+                          }
+                        } catch (err) { alert(`오류: ${err}`); }
+                      }}
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }} onClick={() => setSelectedId(v.id)}>
                     <span style={{
                       fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
                       background: (STAGE_COLORS[v.stage] || "#52525b") + "20",

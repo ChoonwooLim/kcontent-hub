@@ -138,3 +138,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "저장 실패", detail: String(e) }, { status: 500 });
   }
 }
+
+// DELETE /api/pipeline — 파이프라인 영상 목록에서 제거
+export async function DELETE(req: NextRequest) {
+  try {
+    const { id } = await req.json();
+    if (!id) return NextResponse.json({ error: "id가 필요합니다." }, { status: 400 });
+
+    await prisma.pipelineVideo.delete({ where: { id } });
+
+    return NextResponse.json({ success: true, deleted: id });
+  } catch (e) {
+    return NextResponse.json({ error: "삭제 실패", detail: String(e) }, { status: 500 });
+  }
+}
