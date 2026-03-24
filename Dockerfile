@@ -18,7 +18,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl ffmpeg python3 curl \
  && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
  && chmod a+rx /usr/local/bin/yt-dlp \
- && mkdir -p tmp_downloads \
+ && mkdir -p media/downloads \
  && yt-dlp --version \
  && ffmpeg -version | head -1
 

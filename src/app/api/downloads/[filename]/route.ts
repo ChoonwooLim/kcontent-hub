@@ -3,8 +3,9 @@ import { existsSync, readFileSync, statSync, readdirSync } from "fs";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 
-const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
+const TMP_DIR = path.join(process.cwd(), "media", "downloads");
 const SAVED_DIR = path.join(TMP_DIR, "saved");
+const LEGACY_DIR = path.join(process.cwd(), "tmp_downloads"); // 이전 경로 호환
 
 // GET /api/downloads/[filename] — 서버에 저장된 영상 파일 스트리밍
 export async function GET(
@@ -46,10 +47,10 @@ export async function GET(
     }
   } catch { /* ignore */ }
 
-  // 2. saved → root 검색
-  for (const dir of [SAVED_DIR, TMP_DIR]) {
+  // 2. saved → root → legacy 검색
+  for (const dir of [SAVED_DIR, TMP_DIR, LEGACY_DIR, path.join(LEGACY_DIR, "saved")]) {
     const fp = path.join(dir, decodedName);
-    if (fp.startsWith(TMP_DIR) && existsSync(fp)) {
+    if (existsSync(fp)) {
       return serve(fp);
     }
   }

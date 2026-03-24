@@ -5,7 +5,7 @@ import path from "path";
 export const runtime = "nodejs";
 export const maxDuration = 120; // Whisper API는 시간이 걸릴 수 있음
 
-const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
+const TMP_DIR = path.join(process.cwd(), "media", "downloads");
 const SAVED_DIR = path.join(TMP_DIR, "saved");
 
 /**

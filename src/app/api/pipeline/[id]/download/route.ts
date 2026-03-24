@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdir
 import path from "path";
 
 /* ── 바이너리 경로 자동 탐색 ─────────────────────────── */
-const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
+const TMP_DIR = path.join(process.cwd(), "media", "downloads");
 const isWindows = process.platform === "win32";
 
 function findBinary(name: string): string {
