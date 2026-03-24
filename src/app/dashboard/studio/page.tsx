@@ -137,6 +137,9 @@ export default function StudioPage() {
   const [exported, setExported] = useState(false);
   const [ytReady, setYtReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [subtitleLoading, setSubtitleLoading] = useState<string | null>(null);
+  const [subtitleError, setSubtitleError] = useState<string | null>(null);
+  const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
 
   const playerRef = useRef<YTPlayer | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -571,6 +574,88 @@ export default function StudioPage() {
                 alt="thumbnail"
                 style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }}
               />
+            </div>
+          )}
+
+          {/* 자막 워크플로우 */}
+          {videoId && (
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                자막 워크플로우
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* ① 자막 추출 */}
+                <button
+                  className="btn btn-brand btn-sm"
+                  style={{ gap: 6, justifyContent: "flex-start" }}
+                  disabled={subtitleLoading !== null}
+                  onClick={async () => {
+                    setSubtitleLoading("extract");
+                    setSubtitleError(null);
+                    try {
+                      const res = await fetch("/api/studio/subtitle", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "extract", videoId }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) { setSubtitleError(data.error); return; }
+                      setSubs(data.subs);
+                      setSubtitleStep("extracted");
+                    } catch (e) { setSubtitleError(String(e)); }
+                    finally { setSubtitleLoading(null); }
+                  }}
+                >
+                  {subtitleLoading === "extract"
+                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />자막 추출 중...</>
+                    : <><Download size={12} />① 자막 추출 (YouTube CC)</>
+                  }
+                </button>
+                {subtitleStep && (
+                  <div style={{ fontSize: 10, color: "#34d399", marginLeft: 4 }}>✓ {subs.length}개 자막 추출됨</div>
+                )}
+
+                {/* ② 한국어 번역 */}
+                <button
+                  className="btn btn-brand btn-sm"
+                  style={{
+                    gap: 6, justifyContent: "flex-start",
+                    background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                    borderColor: "#8b5cf6",
+                  }}
+                  disabled={subtitleLoading !== null || !subtitleStep}
+                  onClick={async () => {
+                    setSubtitleLoading("translate");
+                    setSubtitleError(null);
+                    try {
+                      const res = await fetch("/api/studio/subtitle", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "translate", subs }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) { setSubtitleError(data.error); return; }
+                      setSubs(data.subs);
+                      setSubtitleStep("translated");
+                    } catch (e) { setSubtitleError(String(e)); }
+                    finally { setSubtitleLoading(null); }
+                  }}
+                >
+                  {subtitleLoading === "translate"
+                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />번역 중 (GPT-4o)...</>
+                    : <><Palette size={12} />② 한국어 번역 (GPT-4o)</>
+                  }
+                </button>
+                {subtitleStep === "translated" && (
+                  <div style={{ fontSize: 10, color: "#818cf8", marginLeft: 4 }}>✓ 한국어 번역 완료</div>
+                )}
+
+                {subtitleError && (
+                  <div style={{ fontSize: 11, color: "#f87171", padding: "6px 8px", borderRadius: 6, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    <AlertCircle size={11} style={{ marginRight: 4 }} />{subtitleError}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
