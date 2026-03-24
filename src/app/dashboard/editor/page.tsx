@@ -466,13 +466,41 @@ export default function EditorPage() {
 
   // 다운로드 완료된 영상 목록
   interface DownloadedVideo {
-    id: string; filename: string; url: string; blob: Blob;
+    id: string; filename: string; url: string; blob?: Blob;
     size: number; mode: string; clipCount: number; createdAt: Date;
   }
   const [downloadedVideos, setDownloadedVideos] = useState<DownloadedVideo[]>([]);
 
+  // 서버에 저장된 다운로드 파일 목록 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/downloads");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.files && data.files.length > 0) {
+          const serverVideos: DownloadedVideo[] = data.files.map((f: { id: string; filename: string; url: string; size: number; createdAt: string }) => ({
+            id: f.id,
+            filename: f.filename,
+            url: f.url,
+            size: f.size,
+            mode: f.filename.includes("merged") ? "merged" : "single",
+            clipCount: 0,
+            createdAt: new Date(f.createdAt),
+          }));
+          setDownloadedVideos(prev => {
+            // 이미 있는 항목은 제외하고 서버 목록 병합
+            const existingIds = new Set(prev.map(v => v.filename));
+            const newOnes = serverVideos.filter(v => !existingIds.has(v.filename));
+            return [...prev, ...newOnes];
+          });
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
   // 미리보기 영상 상태
-  const [previewVideo, setPreviewVideo] = useState<{ url: string; filename: string; blob: Blob } | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<{ url: string; filename: string; blob: Blob | null } | null>(null);
 
   // 미리보기 닫기
   const closePreviewVideo = () => {
@@ -483,8 +511,9 @@ export default function EditorPage() {
   // 미리보기 후 저장
   const savePreviewFile = async () => {
     if (!previewVideo) return;
+    // blob이 있으면 File System Access API 사용
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (typeof window !== "undefined" && (window as any).showSaveFilePicker) {
+    if (previewVideo.blob && typeof window !== "undefined" && (window as any).showSaveFilePicker) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const handle = await (window as any).showSaveFilePicker({
@@ -500,7 +529,7 @@ export default function EditorPage() {
         if (err instanceof Error && err.name === "AbortError") return;
       }
     }
-    // 폴백
+    // 폴백: URL 다운로드
     const a = document.createElement("a");
     a.href = previewVideo.url;
     a.download = previewVideo.filename;
@@ -1101,7 +1130,7 @@ export default function EditorPage() {
                               background: "rgba(0,0,0,0.25)", cursor: "pointer",
                               transition: "background 0.2s",
                             }}
-                            onClick={() => setPreviewVideo({ url: vid.url, filename: vid.filename, blob: vid.blob })}
+                            onClick={() => setPreviewVideo({ url: vid.url, filename: vid.filename, blob: vid.blob || null })}
                             onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.1)")}
                             onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.25)")}
                           >
@@ -1295,7 +1324,7 @@ export default function EditorPage() {
               display: "flex", justifyContent: "space-between", alignItems: "center",
             }}>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {(previewVideo.blob.size / 1024 / 1024).toFixed(1)} MB · MP4
+                {previewVideo.blob ? `${(previewVideo.blob.size / 1024 / 1024).toFixed(1)} MB · MP4` : "MP4"}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-ghost btn-sm" style={{ gap: 4, padding: "8px 16px" }}

@@ -282,7 +282,7 @@ export async function POST(
     }
 
     if (action === "file") {
-      const { jobId } = body;
+      const { jobId, pipelineVideoId } = body;
       const status = readJobStatus(jobId);
       if (!status || status.status !== "done" || !status.filePath) {
         return NextResponse.json({ error: "파일이 준비되지 않았습니다." }, { status: 400 });
@@ -291,7 +291,32 @@ export async function POST(
       const fileData = readFileSync(status.filePath);
       const filename = status.filename || "download.mp4";
 
-      // 임시 파일 정리
+      // 영구 저장: tmp에서 permanent 디렉터리로 복사
+      const permanentDir = path.join(TMP_DIR, "saved");
+      if (!existsSync(permanentDir)) mkdirSync(permanentDir, { recursive: true });
+      const permanentPath = path.join(permanentDir, filename);
+      writeFileSync(permanentPath, fileData);
+
+      // DB에 다운로드 기록 저장
+      try {
+        const { prisma: db } = await import("@/lib/prisma");
+        const ws = await db.workspace.findFirst();
+        if (ws) {
+          await db.downloadedFile.create({
+            data: {
+              filename,
+              filepath: permanentPath,
+              size: fileData.length,
+              mode: filename.includes("Full") ? "merged" : "single",
+              clipCount: filename.match(/(\d+)clips/) ? parseInt(filename.match(/(\d+)clips/)![1]) : 1,
+              videoId: pipelineVideoId || null,
+              workspaceId: ws.id,
+            },
+          });
+        }
+      } catch { /* DB 저장 실패해도 파일은 반환 */ }
+
+      // 임시 파일 정리 (saved 폴더 제외)
       for (const f of readdirSync(TMP_DIR)) {
         if (f.startsWith(`job_${jobId}`)) {
           try { unlinkSync(path.join(TMP_DIR, f)); } catch {}

@@ -59,6 +59,25 @@ model PipelineVideo {
   publishes    PublishRecord[]
   outreaches   CreatorOutreach[]
   editClips    EditClip[]
+  downloadedFiles DownloadedFile[]
+}
+
+// 다운로드된 영상 파일 (서버 저장 + DB 메타데이터)
+model DownloadedFile {
+  id            String        @id @default(cuid())
+  filename      String        // 파일명
+  filepath      String        // 서버 내 파일 경로
+  size          Int           // 파일 크기 (bytes)
+  mode          String        @default("merged") // "merged" | "single"
+  clipCount     Int           @default(0)
+  
+  videoId       String?
+  video         PipelineVideo? @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  
+  workspaceId   String
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime      @default(now())
 }
 
 // 원작자 알림 기록 (댓글 / 이메일 / DM)
@@ -205,6 +224,7 @@ model Workspace {
   videos      PipelineVideo[]
   channels    Channel[]
   scripts     Script[]
+  downloadedFiles DownloadedFile[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
