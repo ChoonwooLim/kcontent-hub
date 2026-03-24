@@ -150,24 +150,19 @@ async function processDownloadJob(
       return;
     }
 
-    // 2단계: ffmpeg 트림
+    // 2단계: ffmpeg 트림 (-c copy는 매우 빠름)
     if (mode === "single") {
       const clip = clips[0];
       const start = normalizeTime(clip.startTime);
       const duration = timeToSec(normalizeTime(clip.endTime)) - timeToSec(start);
       const outPath = path.join(TMP_DIR, `job_${jobId}_out.mp4`);
 
-      writeJobStatus(jobId, { status: "trimming", progress: 72, message: `클립 트림 중... (${Math.round(duration)}초 구간)` });
+      writeJobStatus(jobId, { status: "trimming", progress: 75, message: `클립 트림 중... (${Math.round(duration)}초 구간)` });
 
-      await runFFmpeg(ffmpeg, [
+      await runFFmpegSimple(ffmpeg, [
         "-y", "-ss", start, "-i", sourcePath,
         "-t", String(duration), "-c", "copy", "-movflags", "+faststart", outPath,
-      ], duration, (pct) => {
-        writeJobStatus(jobId, {
-          status: "trimming", progress: 72 + Math.round(pct * 0.26),
-          message: `클립 트림 중... ${Math.round(pct)}%`,
-        });
-      });
+      ]);
 
       const label = clip.label || "clip";
       const filename = `KContent_${label}_${start.replace(/:/g, "")}.mp4`;
@@ -179,7 +174,6 @@ async function processDownloadJob(
     } else {
       // merged — 트림 단계 (72% ~ 90%)
       const clipPaths: string[] = [];
-      const trimProgressRange = 18; // 72% ~ 90%
       
       for (let i = 0; i < clips.length; i++) {
         const clip = clips[i];
@@ -187,48 +181,38 @@ async function processDownloadJob(
         const duration = timeToSec(normalizeTime(clip.endTime)) - timeToSec(start);
         const clipPath = path.join(TMP_DIR, `job_${jobId}_part${i}.mp4`);
 
-        const baseProgress = 72 + Math.round((i / clips.length) * trimProgressRange);
-
         writeJobStatus(jobId, {
-          status: "trimming", progress: baseProgress,
+          status: "trimming",
+          progress: 72 + Math.round(((i + 0.5) / clips.length) * 18),
           message: `클립 ${i + 1}/${clips.length} 트림 중... (${Math.round(duration)}초 구간)`,
         });
 
-        await runFFmpeg(ffmpeg, [
+        await runFFmpegSimple(ffmpeg, [
           "-y", "-ss", start, "-i", sourcePath,
           "-t", String(duration), "-c", "copy", "-movflags", "+faststart", clipPath,
-        ], duration, (pct) => {
-          const clipProgressContrib = (1 / clips.length) * trimProgressRange * (pct / 100);
-          writeJobStatus(jobId, {
-            status: "trimming",
-            progress: baseProgress + Math.round(clipProgressContrib),
-            message: `클립 ${i + 1}/${clips.length} 트림 중... ${Math.round(pct)}%`,
-          });
+        ]);
+
+        writeJobStatus(jobId, {
+          status: "trimming",
+          progress: 72 + Math.round(((i + 1) / clips.length) * 18),
+          message: `클립 ${i + 1}/${clips.length} 트림 완료 ✓`,
         });
 
         clipPaths.push(clipPath);
       }
 
-      // 3단계: 병합 (90% ~ 98%)
-      writeJobStatus(jobId, { status: "merging", progress: 90, message: `${clips.length}개 클립 병합 시작...` });
+      // 3단계: 병합 (90% ~ 98%) — -c copy concat은 수초 내 완료
+      writeJobStatus(jobId, { status: "merging", progress: 92, message: `${clips.length}개 클립 병합 중...` });
       const concatFile = path.join(TMP_DIR, `job_${jobId}_list.txt`);
       writeFileSync(concatFile, clipPaths.map(p => `file '${p.replace(/\\/g, "/")}'`).join("\n"), "utf8");
 
-      // 전체 병합 길이 계산
-      const totalDuration = clips.reduce((sum, c) => {
-        return sum + timeToSec(normalizeTime(c.endTime)) - timeToSec(normalizeTime(c.startTime));
-      }, 0);
-
       const mergedPath = path.join(TMP_DIR, `job_${jobId}_out.mp4`);
-      await runFFmpeg(ffmpeg, [
+      await runFFmpegSimple(ffmpeg, [
         "-y", "-f", "concat", "-safe", "0", "-i", concatFile,
         "-c", "copy", "-movflags", "+faststart", mergedPath,
-      ], totalDuration, (pct) => {
-        writeJobStatus(jobId, {
-          status: "merging", progress: 90 + Math.round(pct * 0.08),
-          message: `클립 병합 중... ${Math.round(pct)}%`,
-        });
-      });
+      ]);
+
+      writeJobStatus(jobId, { status: "merging", progress: 98, message: "병합 완료, 파일 준비 중..." });
 
       const filename = `KContent_Full_${clips.length}clips.mp4`;
       writeJobStatus(jobId, {
@@ -242,36 +226,19 @@ async function processDownloadJob(
   }
 }
 
-/** ffmpeg 실행 (진행률 콜백 + 10분 타임아웃) */
-function runFFmpeg(
-  ffmpeg: string, args: string[],
-  expectedDurationSec: number,
-  onProgress?: (pct: number) => void,
-): Promise<void> {
+/** ffmpeg 실행 — 단순 모드 (-c copy용, progress 없음, 빠름) */
+function runFFmpegSimple(ffmpeg: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    // -progress pipe:1 로 진행률 출력
-    const fullArgs = [...args.slice(0, -1), "-progress", "pipe:1", args[args.length - 1]];
-    const proc = spawn(ffmpeg, fullArgs, { stdio: ["pipe", "pipe", "pipe"] });
-
-    proc.stdout.on("data", (data: Buffer) => {
-      const text = data.toString();
-      // out_time_us=12345678 (마이크로초)
-      const timeMatch = text.match(/out_time_us=(\d+)/);
-      if (timeMatch && expectedDurationSec > 0 && onProgress) {
-        const currentSec = parseInt(timeMatch[1]) / 1_000_000;
-        const pct = Math.min(99, (currentSec / expectedDurationSec) * 100);
-        onProgress(pct);
-      }
-      // progress=end 는 완료
-      if (text.includes("progress=end") && onProgress) {
-        onProgress(100);
-      }
+    const proc = spawn(ffmpeg, args, { stdio: ["pipe", "pipe", "pipe"] });
+    // stderr 에러 메시지 캡처
+    let stderrBuf = "";
+    proc.stderr.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg 오류 (코드:${code}): ${stderrBuf.slice(-200)}`));
     });
-
-    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg 종료 코드: ${code}`)));
     proc.on("error", reject);
-    // 10분 타임아웃 (기존 2분에서 대폭 증가)
-    setTimeout(() => { proc.kill(); reject(new Error("ffmpeg 시간 초과 (10분)")); }, 600000);
+    setTimeout(() => { proc.kill(); reject(new Error("ffmpeg 시간 초과 (5분)")); }, 300000);
   });
 }
 
