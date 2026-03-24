@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import Link from "next/link";
 import { Film } from "lucide-react";
 
 export default function LoginPage() {
@@ -91,6 +92,13 @@ export default function LoginPage() {
             {loading ? "로그인 중..." : "로그인"}
           </button>
         </form>
+
+        <div style={{ textAlign: "center", marginTop: 24, fontSize: 13, color: "var(--text-muted)" }}>
+          계정이 없으신가요?{" "}
+          <Link href="/register" style={{ color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
+            회원가입
+          </Link>
+        </div>
       </div>
     </div>
   );

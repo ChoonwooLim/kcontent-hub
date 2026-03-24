@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Youtube, Zap, ArrowRight, CheckCircle, TrendingUp, Cpu, Globe, Film } from "lucide-react";
+import { ArrowRight, Cpu, Globe, Film, LogIn, UserPlus, Youtube } from "lucide-react";
 
 const FEATURES = [
   { icon: Youtube, label: "소재 수집기", desc: "구독자·조회수 낮은 외국인 영상 400개씩 자동 스캔 · S등급 선별", color: "#ef4444" },
@@ -11,11 +11,33 @@ const FEATURES = [
 
 export default function HomePage() {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-void)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg-void)", display: "flex", flexDirection: "column", alignItems: "center", padding: "0 20px" }}>
+      {/* Top Navigation Bar */}
+      <nav style={{ width: "100%", maxWidth: 960, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 0", position: "relative", zIndex: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ background: "var(--gradient-brand)", width: 36, height: 36, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 20px var(--brand-glow)" }}>
+            <Film size={18} color="white" />
+          </div>
+          <span style={{ fontFamily: "Outfit", fontWeight: 800, fontSize: 18, color: "var(--text-primary)" }}>KContent Studio</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/login" style={{ textDecoration: "none" }}>
+            <button className="btn btn-ghost btn-sm" style={{ gap: 6, fontSize: 13 }}>
+              <LogIn size={14} /> 로그인
+            </button>
+          </Link>
+          <Link href="/register" style={{ textDecoration: "none" }}>
+            <button className="btn btn-brand btn-sm" style={{ gap: 6, fontSize: 13 }}>
+              <UserPlus size={14} /> 회원가입
+            </button>
+          </Link>
+        </div>
+      </nav>
+
       {/* Ambient glow */}
       <div style={{ position: "fixed", top: "20%", left: "50%", transform: "translateX(-50%)", width: 600, height: 300, background: "radial-gradient(ellipse, rgba(99,102,241,0.08), transparent 70%)", pointerEvents: "none" }} />
 
-      <div style={{ maxWidth: 720, width: "100%", textAlign: "center", position: "relative" }}>
+      <div style={{ maxWidth: 720, width: "100%", textAlign: "center", position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 40 }}>
           <div style={{ background: "var(--gradient-brand)", width: 48, height: 48, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 30px var(--brand-glow)" }}>
@@ -41,14 +63,14 @@ export default function HomePage() {
         </p>
 
         <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 56, flexWrap: "wrap" }}>
-          <Link href="/dashboard" style={{ textDecoration: "none" }}>
+          <Link href="/login" style={{ textDecoration: "none" }}>
             <button className="btn btn-brand btn-lg" style={{ fontSize: 16, padding: "14px 32px" }}>
-              <Zap size={18} /> 스튜디오 시작하기
+              <LogIn size={18} /> 로그인하기
             </button>
           </Link>
-          <Link href="/dashboard/hunter" style={{ textDecoration: "none" }}>
+          <Link href="/register" style={{ textDecoration: "none" }}>
             <button className="btn btn-ghost btn-lg" style={{ fontSize: 15, padding: "14px 24px" }}>
-              <Youtube size={16} /> 소재 수집기 체험
+              <UserPlus size={16} /> 회원가입하기
               <ArrowRight size={15} />
             </button>
           </Link>
