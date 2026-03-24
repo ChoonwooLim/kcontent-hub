@@ -1174,7 +1174,7 @@ export default function EditorPage() {
                                   videoTitle: selected.title,
                                   channelTitle: selected.channel,
                                   title: selected.titleKo || selected.title,
-                                  downloadedFileUrl: `/api/downloads/${encodeURIComponent(vid.filename)}`,
+                                  downloadedFileUrl: `https://kcontentshub.twinverse.org/api/downloads/${encodeURIComponent(vid.filename)}`,
                                   downloadedFilename: vid.filename,
                                   thumbnailTop: "",
                                   thumbnailBottom: "",
