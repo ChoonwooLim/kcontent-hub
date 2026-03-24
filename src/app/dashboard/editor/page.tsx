@@ -1186,22 +1186,50 @@ export default function EditorPage() {
                                 <Film size={11} />자막 스튜디오로 전송
                               </button>
                             </Link>
-                            {/* 삭제 버튼 */}
+                            {/* 목록에서만 제거 (파일 유지) */}
                             <button
                               className="btn btn-sm"
                               style={{
-                                padding: "6px 10px", fontSize: 11,
-                                background: "rgba(239,68,68,0.1)", color: "#f87171",
-                                border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6,
+                                padding: "6px 8px", fontSize: 11,
+                                background: "rgba(148,163,184,0.1)", color: "#94a3b8",
+                                border: "1px solid rgba(148,163,184,0.3)", borderRadius: 6,
                               }}
-                              title="목록에서 삭제"
+                              title="목록에서만 제거 (서버 파일은 유지)"
                               onClick={async () => {
-                                if (!confirm(`"${vid.filename}"을(를) 삭제하시겠습니까?\n서버 파일과 DB 레코드가 모두 삭제됩니다.`)) return;
+                                if (!confirm(`"${vid.filename}"\n목록에서만 제거합니다. 서버 파일은 유지됩니다.`)) return;
                                 try {
                                   const res = await fetch("/api/downloads", {
                                     method: "DELETE",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ id: vid.id }),
+                                    body: JSON.stringify({ id: vid.id, deleteFile: false }),
+                                  });
+                                  if (res.ok) {
+                                    setDownloadedVideos(prev => prev.filter(v => v.id !== vid.id));
+                                  } else {
+                                    const data = await res.json();
+                                    alert(`실패: ${data.error}`);
+                                  }
+                                } catch (e) { alert(`오류: ${e}`); }
+                              }}
+                            >
+                              ✕
+                            </button>
+                            {/* 파일까지 완전 삭제 */}
+                            <button
+                              className="btn btn-sm"
+                              style={{
+                                padding: "6px 8px", fontSize: 11,
+                                background: "rgba(239,68,68,0.1)", color: "#f87171",
+                                border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6,
+                              }}
+                              title="서버 파일까지 완전 삭제"
+                              onClick={async () => {
+                                if (!confirm(`⚠️ "${vid.filename}"\n서버 파일과 DB 레코드를 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다!`)) return;
+                                try {
+                                  const res = await fetch("/api/downloads", {
+                                    method: "DELETE",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: vid.id, deleteFile: true }),
                                   });
                                   if (res.ok) {
                                     setDownloadedVideos(prev => prev.filter(v => v.id !== vid.id));

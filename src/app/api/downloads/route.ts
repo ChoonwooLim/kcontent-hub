@@ -64,35 +64,39 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE /api/downloads — 다운로드 파일 삭제 (DB + 서버 파일)
+// DELETE /api/downloads — deleteFile: true → 파일+DB 삭제, false → DB만 삭제(목록 제거)
 export async function DELETE(req: NextRequest) {
   try {
-    const { id } = await req.json();
+    const { id, deleteFile } = await req.json();
     if (!id) return NextResponse.json({ error: "id가 필요합니다." }, { status: 400 });
 
-    // DB에서 레코드 조회
     const file = await prisma.downloadedFile.findUnique({ where: { id } });
     if (!file) return NextResponse.json({ error: "레코드를 찾을 수 없습니다." }, { status: 404 });
 
-    // 서버 파일 삭제 시도 (여러 경로 검색)
-    const possiblePaths = [
-      file.filepath,
-      path.join(MEDIA_DIR, file.filename),
-      path.join(MEDIA_DIR, "saved", file.filename),
-      path.join(LEGACY_DIR, file.filename),
-      path.join(LEGACY_DIR, "saved", file.filename),
-    ];
-
-    for (const fp of possiblePaths) {
-      if (fp && existsSync(fp)) {
-        try { unlinkSync(fp); } catch { /* ignore */ }
+    // 파일 삭제 (deleteFile: true일 때만)
+    if (deleteFile) {
+      const possiblePaths = [
+        file.filepath,
+        path.join(MEDIA_DIR, file.filename),
+        path.join(MEDIA_DIR, "saved", file.filename),
+        path.join(LEGACY_DIR, file.filename),
+        path.join(LEGACY_DIR, "saved", file.filename),
+      ];
+      for (const fp of possiblePaths) {
+        if (fp && existsSync(fp)) {
+          try { unlinkSync(fp); } catch { /* ignore */ }
+        }
       }
     }
 
     // DB 레코드 삭제
     await prisma.downloadedFile.delete({ where: { id } });
 
-    return NextResponse.json({ success: true, deleted: file.filename });
+    return NextResponse.json({
+      success: true,
+      deleted: file.filename,
+      fileDeleted: !!deleteFile,
+    });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
