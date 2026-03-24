@@ -69,6 +69,7 @@ interface JobStatus {
   message: string;
   filename?: string;
   filePath?: string;
+  saved?: boolean;
 }
 
 function jobStatusPath(jobId: string) { return path.join(TMP_DIR, `job_${jobId}.json`); }
@@ -276,8 +277,51 @@ export async function POST(
 
     if (action === "status") {
       const { jobId } = body;
+      const { id: pipelineVideoId } = await params;
       const status = readJobStatus(jobId);
       if (!status) return NextResponse.json({ error: "작업을 찾을 수 없습니다." }, { status: 404 });
+
+      // done 상태이며 아직 DB 등록이 안 된 경우 → 자동 저장
+      if (status.status === "done" && status.filePath && !status.saved) {
+        try {
+          const fileData = readFileSync(status.filePath);
+          const filename = status.filename || "download.mp4";
+
+          // 영구 저장: saved 디렉터리로 복사
+          const permanentDir = path.join(TMP_DIR, "saved");
+          if (!existsSync(permanentDir)) mkdirSync(permanentDir, { recursive: true });
+          const permanentPath = path.join(permanentDir, filename);
+          writeFileSync(permanentPath, fileData);
+
+          // DB에 다운로드 기록 저장
+          const { prisma: db } = await import("@/lib/prisma");
+          const ws = await db.workspace.findFirst();
+          if (ws) {
+            await db.downloadedFile.create({
+              data: {
+                filename,
+                filepath: permanentPath,
+                size: fileData.length,
+                mode: filename.includes("Full") ? "merged" : "single",
+                clipCount: filename.match(/(\d+)clips/) ? parseInt(filename.match(/(\d+)clips/)![1]) : 1,
+                videoId: pipelineVideoId || null,
+                workspaceId: ws.id,
+              },
+            });
+          }
+
+          // 임시 파일 정리
+          for (const f of readdirSync(TMP_DIR)) {
+            if (f.startsWith(`job_${jobId}`)) {
+              try { unlinkSync(path.join(TMP_DIR, f)); } catch {}
+            }
+          }
+
+          // saved 플래그 기록
+          writeJobStatus(jobId, { ...status, saved: true });
+        } catch { /* DB 저장 실패해도 상태는 반환 */ }
+      }
+
       return NextResponse.json(status);
     }
 
