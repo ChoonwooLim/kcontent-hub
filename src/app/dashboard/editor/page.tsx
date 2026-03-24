@@ -122,11 +122,54 @@ export default function EditorPage() {
       const res = await fetch("/api/pipeline");
       const data = await res.json();
       if (data.videos) setVideos(data.videos);
-    } catch { /* ignore */ }
+      return data.videos || [];
+    } catch { return []; }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchVideos(); }, [fetchVideos]);
+
+  // URL ?saveYtId=xxx 파라미터 → 자동 저장 + 선택
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const saveYtId = params.get("saveYtId");
+    if (!saveYtId) return;
+
+    // URL 파라미터 제거 (중복 실행 방지)
+    window.history.replaceState({}, "", window.location.pathname);
+
+    (async () => {
+      try {
+        // 파이프라인에 저장
+        const res = await fetch("/api/pipeline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `YouTube 영상 (${saveYtId})`,
+            channel: "",
+            originalUrl: `https://www.youtube.com/watch?v=${saveYtId}`,
+            ytVideoId: saveYtId,
+            grade: "B",
+            score: 70,
+            hasCC: false,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.video) {
+          // 목록 새로고침 후 해당 영상 자동 선택
+          const refreshed = await fetchVideos();
+          const found = refreshed.find((v: PipelineVideo) => v.ytVideoId === saveYtId);
+          if (found) setSelectedId(found.id);
+          else if (data.video.id) setSelectedId(data.video.id);
+        }
+      } catch (e) {
+        setError(`영상 저장 오류: ${String(e)}`);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selected = videos.find(v => v.id === selectedId);
   const totalClipSec = selected?.editClips
