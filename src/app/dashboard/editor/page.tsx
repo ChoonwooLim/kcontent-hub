@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   Scissors, Plus, Trash2, ArrowRight, Play, Eye,
   Loader, AlertCircle, ChevronRight, Check, X, Film,
-  MessageSquare, Zap, Download
+  Zap, Download
 } from "lucide-react";
 
 /* YouTube IFrame Player API — 타입을 로컬로 정의 */
@@ -397,9 +397,19 @@ export default function EditorPage() {
           const nameMatch = disposition.match(/filename="?([^"]+)"?/);
           const rawName = nameMatch ? decodeURIComponent(nameMatch[1]) : `KContent_${mode}.mp4`;
 
-          // 미리보기 모달 표시
+          // 미리보기 모달 표시 + 다운로드 목록에 추가
           const blobUrl = URL.createObjectURL(blob);
           setPreviewVideo({ url: blobUrl, filename: rawName, blob });
+          setDownloadedVideos(prev => [...prev, {
+            id: `dl_${Date.now()}`,
+            filename: rawName,
+            url: blobUrl,
+            blob,
+            size: blob.size,
+            mode: mode,
+            clipCount: clipsToSend.length,
+            createdAt: new Date(),
+          }]);
         }
       }
     } catch (e) {
@@ -410,6 +420,13 @@ export default function EditorPage() {
       setDownloadMessage("");
     }
   };
+
+  // 다운로드 완료된 영상 목록
+  interface DownloadedVideo {
+    id: string; filename: string; url: string; blob: Blob;
+    size: number; mode: string; clipCount: number; createdAt: Date;
+  }
+  const [downloadedVideos, setDownloadedVideos] = useState<DownloadedVideo[]>([]);
 
   // 미리보기 영상 상태
   const [previewVideo, setPreviewVideo] = useState<{ url: string; filename: string; blob: Blob } | null>(null);
@@ -982,68 +999,118 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              {/* ── STEP 4: 자막 추출 ─────────────────── */}
+              {/* ── STEP 3: 다운로드 영상 관리 ─────────── */}
               <div className="card" style={{ padding: "14px 16px" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-                  <span style={{ color: "#8b5cf6", marginRight: 6 }}>③</span>
-                  자막 / 보이스 추출
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.6 }}>
-                  YouTube 자막(CC)을 추출합니다. 클립 구간에 맞는 자막만 필터링됩니다.
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button className="btn btn-brand btn-sm" style={{ gap: 6 }}
-                    onClick={() => processAction("transcribe")}
-                    disabled={processing !== null}>
-                    {processing === "transcribe" ? (
-                      <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />추출 중...</>
-                    ) : (
-                      <><MessageSquare size={12} />자막 추출 시작</>
-                    )}
-                  </button>
-                  {selected.transcriptJson && (
-                    <span className="badge badge-green" style={{ fontSize: 10 }}>
-                      ✓ {JSON.parse(selected.transcriptJson).length}개 세그먼트 추출됨
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* ── STEP 5: 한글 변환 ─────────────────── */}
-              <div className="card" style={{ padding: "14px 16px" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-                  <span style={{ color: "#6366f1", marginRight: 6 }}>④</span>
-                  한글 자막 변환
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.6 }}>
-                  GPT-4o로 추출된 자막을 자연스러운 한국어로 번역합니다. 타임스탬프가 유지됩니다.
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button className="btn btn-brand btn-sm" style={{ gap: 6 }}
-                    onClick={() => processAction("translate")}
-                    disabled={processing !== null || !selected.transcriptJson}>
-                    {processing === "translate" ? (
-                      <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />변환 중...</>
-                    ) : (
-                      <><Zap size={12} />한글 변환 시작</>
-                    )}
-                  </button>
-                  {selected.translatedJson && (
-                    <span className="badge badge-green" style={{ fontSize: 10 }}>
-                      ✓ {JSON.parse(selected.translatedJson).length}개 자막 번역 완료
+                <div style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>
+                      <span style={{ color: "#8b5cf6", marginRight: 6 }}>③</span>
+                      다운로드 영상 관리
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                      HD 저장된 영상을 자막 스튜디오로 전송하여 자막·보이스 작업을 진행합니다.
+                    </div>
+                  </div>
+                  {downloadedVideos.length > 0 && (
+                    <span className="badge badge-brand" style={{ fontSize: 10 }}>
+                      {downloadedVideos.length}개 영상
                     </span>
                   )}
                 </div>
 
-                {/* 한글 자막 미리보기 */}
-                {selected.translatedJson && (
-                  <div style={{ marginTop: 10, maxHeight: 200, overflowY: "auto", borderRadius: 8, background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)" }}>
-                    {(JSON.parse(selected.translatedJson) as { time: string; original: string; ko: string }[]).slice(0, 15).map((seg, i) => (
-                      <div key={i} style={{ display: "flex", padding: "6px 10px", borderBottom: "1px solid var(--border-subtle)", gap: 10 }}>
-                        <span style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: "var(--text-muted)", width: 50, flexShrink: 0 }}>{seg.time}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>{seg.original}</div>
-                          <div style={{ fontSize: 12, color: "#818cf8", fontWeight: 500 }}>{seg.ko}</div>
+                {downloadedVideos.length === 0 ? (
+                  <div style={{
+                    padding: "24px 16px", textAlign: "center", borderRadius: 8,
+                    background: "var(--bg-elevated)", border: "1px dashed var(--border-subtle)",
+                  }}>
+                    <Download size={24} color="var(--text-muted)" style={{ marginBottom: 8 }} />
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      위 ② HD 영상 저장에서 클립을 다운로드하면<br />여기에 자동으로 표시됩니다.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                    {downloadedVideos.map((vid) => (
+                      <div key={vid.id} style={{
+                        borderRadius: 10, overflow: "hidden",
+                        background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+                        transition: "border-color 0.2s",
+                      }}>
+                        {/* 썸네일 (비디오 첫 프레임) */}
+                        <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", background: "#000" }}>
+                          <video
+                            src={vid.url}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            muted
+                            preload="metadata"
+                            onLoadedData={(e) => {
+                              const v = e.currentTarget;
+                              v.currentTime = 1; // 1초 지점 썸네일
+                            }}
+                          />
+                          {/* 재생 오버레이 */}
+                          <div
+                            style={{
+                              position: "absolute", inset: 0,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              background: "rgba(0,0,0,0.25)", cursor: "pointer",
+                              transition: "background 0.2s",
+                            }}
+                            onClick={() => setPreviewVideo({ url: vid.url, filename: vid.filename, blob: vid.blob })}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.1)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.25)")}
+                          >
+                            <Play size={20} color="#fff" fill="#fff" />
+                          </div>
+                          {/* 배지 */}
+                          <div style={{
+                            position: "absolute", top: 6, right: 6,
+                            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                            background: vid.mode === "merged" ? "rgba(6,182,212,0.85)" : "rgba(139,92,246,0.85)",
+                            color: "#fff", backdropFilter: "blur(4px)",
+                          }}>
+                            {vid.mode === "merged" ? `병합 ${vid.clipCount}클립` : "개별 클립"}
+                          </div>
+                        </div>
+                        {/* 정보 */}
+                        <div style={{ padding: "8px 10px" }}>
+                          <div style={{
+                            fontSize: 11, fontWeight: 600, color: "var(--text-primary)",
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                            marginBottom: 4,
+                          }}>
+                            {vid.filename}
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8 }}>
+                            {(vid.size / 1024 / 1024).toFixed(1)} MB · {vid.createdAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                          {/* 자막스튜디오 전송 버튼 */}
+                          <Link href="/dashboard/studio">
+                            <button
+                              className="btn btn-brand btn-sm"
+                              style={{
+                                width: "100%", gap: 6, fontSize: 11, padding: "6px 10px",
+                                background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                                borderColor: "#8b5cf6",
+                              }}
+                              onClick={() => {
+                                sessionStorage.setItem("studio_data", JSON.stringify({
+                                  videoId: selected.ytVideoId,
+                                  videoTitle: selected.title,
+                                  channelTitle: selected.channel,
+                                  title: selected.titleKo || selected.title,
+                                  downloadedFilename: vid.filename,
+                                  thumbnailTop: "",
+                                  thumbnailBottom: "",
+                                  script: selected.scriptJson ? JSON.parse(selected.scriptJson) : [],
+                                }));
+                              }}
+                            >
+                              <Film size={11} />자막 스튜디오로 전송
+                            </button>
+                          </Link>
                         </div>
                       </div>
                     ))}
