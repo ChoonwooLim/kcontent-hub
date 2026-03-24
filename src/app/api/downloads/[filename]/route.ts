@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import path from "path";
 
-const SAVED_DIR = path.join(process.cwd(), "tmp_downloads", "saved");
+const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
+const SAVED_DIR = path.join(TMP_DIR, "saved");
 
 // GET /api/downloads/[filename] — 영상 파일 스트리밍
 export async function GET(
@@ -11,10 +12,15 @@ export async function GET(
 ) {
   const { filename } = await params;
   const decodedName = decodeURIComponent(filename);
-  const filepath = path.join(SAVED_DIR, decodedName);
+
+  // saved 폴더 우선, 없으면 tmp_downloads 루트에서 검색
+  let filepath = path.join(SAVED_DIR, decodedName);
+  if (!existsSync(filepath)) {
+    filepath = path.join(TMP_DIR, decodedName);
+  }
 
   // 보안: path traversal 방지
-  if (!filepath.startsWith(SAVED_DIR) || !existsSync(filepath)) {
+  if ((!filepath.startsWith(SAVED_DIR) && !filepath.startsWith(TMP_DIR)) || !existsSync(filepath)) {
     return NextResponse.json({ error: "파일을 찾을 수 없습니다." }, { status: 404 });
   }
 
