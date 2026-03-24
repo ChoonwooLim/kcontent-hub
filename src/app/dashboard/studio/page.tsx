@@ -48,14 +48,7 @@ const FONT_PRESETS = [
   { name: "모노 코드", color: "#7c85f0", bg: "rgba(10,10,20,0.9)", font: "JetBrains Mono" },
 ];
 
-const DEMO_SUBS: SubLine[] = [
-  { id: 1, start: 0, end: 7, text: "🇺🇸 미국에서 온 닉이 처음으로 한국 편의점 문을 열었습니다.", type: "narration" },
-  { id: 2, start: 8, end: 15, text: "\"이게 편의점이야?\" — 닉의 표정이 굳어집니다.", type: "reaction" },
-  { id: 3, start: 16, end: 26, text: "한국 편의점에는 세계 어디에서도 볼 수 없는 것들이 있습니다.", type: "narration" },
-  { id: 4, start: 27, end: 38, text: "삼각김밥, 컵라면, 구운 계란... 외국인이 충격 받는 이유를 파헤칩니다.", type: "narration" },
-  { id: 5, start: 39, end: 52, text: "닉: \"이거 먹어도 돼요? 그냥 여기서?\" (편의점 내 취식 문화에 당황)", type: "reaction" },
-  { id: 6, start: 53, end: 65, text: "🇰🇷 우리에겐 너무나 당연한 것들이 세계에서는 특별합니다.", type: "commentary" },
-];
+
 
 /* ── 유틸 ────────────────────────────────────────────────── */
 function timeToSec(t: string): number {
@@ -129,7 +122,7 @@ export default function StudioPage() {
   const [videoId, setVideoId] = useState<string>("");
   const [fileVideoUrl, setFileVideoUrl] = useState<string>("");  // 서버 다운로드 파일 URL
   const [urlInput, setUrlInput] = useState("");
-  const [subs, setSubs] = useState<SubLine[]>(DEMO_SUBS);
+  const [subs, setSubs] = useState<SubLine[]>([]);
   const [videoTitle, setVideoTitle] = useState("데모 영상");
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -157,18 +150,33 @@ export default function StudioPage() {
       const raw = sessionStorage.getItem("studio_data");
       if (raw) {
         const data: StudioData = JSON.parse(raw);
+
+        // ★ 이전 상태 전체 초기화
+        setSubs([]);
+        setSubtitleStep(null);
+        setSubtitleError(null);
+        setSubtitleLoading(null);
+        setSelectedSub(null);
+        setCurrentTime(0);
+        setPlaying(false);
+        setExported(false);
+
         // 다운로드 파일이 있으면 파일 모드로
         if (data.downloadedFileUrl) {
           setFileVideoUrl(data.downloadedFileUrl);
           setVideoId("");  // YouTube 모드 해제
           setVideoTitle(data.downloadedFilename || data.title || data.videoTitle || "");
         } else if (data.videoId) {
+          setFileVideoUrl("");
           setVideoId(data.videoId);
           setVideoTitle(data.title || data.videoTitle || "");
         }
+
+        // script가 있으면 변환, 없으면 빈 배열 유지
         if (data.script?.length) {
           setSubs(scriptToSubs(data.script));
         }
+
         sessionStorage.removeItem("studio_data");
       }
     } catch { /* ignore */ }
