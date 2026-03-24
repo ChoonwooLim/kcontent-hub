@@ -662,7 +662,7 @@ export default function StudioPage() {
           )}
 
           {/* 자막 워크플로우 */}
-          {videoId && (
+          {(videoId || isFileMode) && (
             <div className="card" style={{ padding: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 자막 워크플로우
@@ -680,7 +680,7 @@ export default function StudioPage() {
                       const res = await fetch("/api/studio/subtitle", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "extract", videoId }),
+                        body: JSON.stringify({ action: "extract", videoId: videoId || "", fileVideoUrl: fileVideoUrl || "" }),
                       });
                       const data = await res.json();
                       if (!res.ok) { setSubtitleError(data.error); return; }
@@ -691,8 +691,8 @@ export default function StudioPage() {
                   }}
                 >
                   {subtitleLoading === "extract"
-                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />자막 추출 중...</>
-                    : <><Download size={12} />① 자막 추출 (YouTube CC)</>
+                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{isFileMode ? "Whisper 음성 분석 중..." : "자막 추출 중..."}</>
+                    : <><Download size={12} />{isFileMode ? "① 음성 분석 자막 추출 (Whisper AI)" : "① 자막 추출 (YouTube CC)"}</>
                   }
                 </button>
                 {subtitleStep && (

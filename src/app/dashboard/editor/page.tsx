@@ -1169,7 +1169,8 @@ export default function EditorPage() {
                               }}
                               onClick={() => {
                                 sessionStorage.setItem("studio_data", JSON.stringify({
-                                  videoId: "",  // YouTube 모드 비활성화
+                                  videoId: "",  // 재생은 파일 모드
+                                  ytVideoId: selected.ytVideoId,  // 자막 추출용 원본 YouTube ID
                                   videoTitle: selected.title,
                                   channelTitle: selected.channel,
                                   title: selected.titleKo || selected.title,

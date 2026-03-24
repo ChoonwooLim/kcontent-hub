@@ -1,49 +1,138 @@
 import { NextRequest, NextResponse } from "next/server";
+import { existsSync, readFileSync } from "fs";
+import path from "path";
 
 export const runtime = "nodejs";
+export const maxDuration = 120; // Whisper API는 시간이 걸릴 수 있음
+
+const TMP_DIR = path.join(process.cwd(), "tmp_downloads");
+const SAVED_DIR = path.join(TMP_DIR, "saved");
 
 /**
  * POST /api/studio/subtitle
- * body: { action: "extract" | "translate", videoId, subs? }
+ * body: { action: "extract" | "translate", videoId?, fileVideoUrl?, subs? }
  *
- * extract: YouTube 자막(CC) 추출
- * translate: 영어 자막을 한국어로 번역
+ * extract: Whisper API 음성 분석 (파일 모드) 또는 YouTube CC 추출
+ * translate: 자막을 한국어로 번역 (GPT-4o)
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action } = body;
 
-    // ── 1. 자막 추출 ──
+    // ── 1. 자막 추출 (Whisper + YouTube CC fallback) ──
     if (action === "extract") {
-      const { videoId } = body;
-      if (!videoId) return NextResponse.json({ error: "videoId가 필요합니다." }, { status: 400 });
+      const { videoId, fileVideoUrl } = body;
+      const openaiKey = process.env.OPENAI_API_KEY;
 
-      try {
-        const { YoutubeTranscript } = await import("youtube-transcript");
-        const raw = await YoutubeTranscript.fetchTranscript(videoId);
+      // ── A. 파일 모드: Whisper API로 음성 분석 ──
+      if (fileVideoUrl) {
+        if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다." }, { status: 500 });
 
-        const transcript = raw.map((seg: { offset: number; duration: number; text: string }, i: number) => {
-          const startSec = Math.round((seg.offset / 1000) * 10) / 10;
-          const endSec = Math.round((startSec + seg.duration / 1000) * 10) / 10;
-          return {
-            id: i + 1,
-            start: startSec,
-            end: endSec,
-            text: seg.text,
-            type: "narration",
-          };
+        // 파일 경로 해석 (/api/downloads/파일명 → 서버 파일 경로)
+        const filename = decodeURIComponent(fileVideoUrl.split("/").pop() || "");
+        let filepath = path.join(SAVED_DIR, filename);
+        if (!existsSync(filepath)) {
+          filepath = path.join(TMP_DIR, filename);
+        }
+
+        if (!filepath.startsWith(TMP_DIR) || !existsSync(filepath)) {
+          return NextResponse.json({ error: `영상 파일을 찾을 수 없습니다: ${filename}` }, { status: 404 });
+        }
+
+        // 파일 읽기 → FormData로 Whisper API 호출
+        const fileBuffer = readFileSync(filepath);
+        const fileBlob = new Blob([fileBuffer], { type: "video/mp4" });
+
+        const formData = new FormData();
+        formData.append("file", fileBlob, filename);
+        formData.append("model", "whisper-1");
+        formData.append("response_format", "verbose_json");
+        formData.append("timestamp_granularities[]", "segment");
+
+        const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openaiKey}`,
+          },
+          body: formData,
         });
 
-        return NextResponse.json({ success: true, subs: transcript });
-      } catch {
+        if (!whisperRes.ok) {
+          const errData = await whisperRes.json().catch(() => ({}));
+          return NextResponse.json({
+            error: `Whisper API 오류 (${whisperRes.status}): ${JSON.stringify(errData).slice(0, 300)}`,
+          }, { status: whisperRes.status });
+        }
+
+        const whisperData = await whisperRes.json() as {
+          segments?: { id: number; start: number; end: number; text: string }[];
+          text?: string;
+          language?: string;
+        };
+
+        if (!whisperData.segments || whisperData.segments.length === 0) {
+          // segment가 없으면 전체 텍스트를 하나의 자막으로
+          return NextResponse.json({
+            success: true,
+            language: whisperData.language || "unknown",
+            subs: [{
+              id: 1,
+              start: 0,
+              end: 30,
+              text: whisperData.text || "(음성이 감지되지 않았습니다)",
+              type: "narration",
+            }],
+          });
+        }
+
+        const subs = whisperData.segments.map((seg, i) => ({
+          id: i + 1,
+          start: Math.round(seg.start * 10) / 10,
+          end: Math.round(seg.end * 10) / 10,
+          text: seg.text.trim(),
+          type: "narration",
+        }));
+
         return NextResponse.json({
-          error: "자막 추출 실패 — YouTube 자막이 없거나 제한된 영상입니다.",
-        }, { status: 422 });
+          success: true,
+          language: whisperData.language || "unknown",
+          segmentCount: subs.length,
+          subs,
+          message: `Whisper 음성 분석 완료 — ${subs.length}개 자막 추출 (언어: ${whisperData.language || "unknown"})`,
+        });
       }
+
+      // ── B. YouTube CC 자막 추출 (원본 영상 URL로 접근 시) ──
+      if (videoId) {
+        try {
+          const { YoutubeTranscript } = await import("youtube-transcript");
+          const raw = await YoutubeTranscript.fetchTranscript(videoId);
+
+          const transcript = raw.map((seg: { offset: number; duration: number; text: string }, i: number) => {
+            const startSec = Math.round((seg.offset / 1000) * 10) / 10;
+            const endSec = Math.round((startSec + seg.duration / 1000) * 10) / 10;
+            return {
+              id: i + 1,
+              start: startSec,
+              end: endSec,
+              text: seg.text,
+              type: "narration",
+            };
+          });
+
+          return NextResponse.json({ success: true, subs: transcript });
+        } catch {
+          return NextResponse.json({
+            error: "YouTube CC 자막 추출 실패 — 이 영상에는 자막이 없습니다.",
+          }, { status: 422 });
+        }
+      }
+
+      return NextResponse.json({ error: "fileVideoUrl 또는 videoId가 필요합니다." }, { status: 400 });
     }
 
-    // ── 2. 한국어 번역 ──
+    // ── 2. 한국어 번역 (GPT-4o) ──
     if (action === "translate") {
       const { subs } = body as { subs: { id: number; start: number; end: number; text: string; type: string }[] };
       if (!subs?.length) return NextResponse.json({ error: "자막 데이터가 필요합니다." }, { status: 400 });
