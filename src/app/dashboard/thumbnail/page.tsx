@@ -5,8 +5,8 @@ import {
   Trash2, Copy, Layers, Plus, ArrowUp, ArrowDown
 } from "lucide-react";
 
-const CANVAS_W = 1280;
-const CANVAS_H = 720;
+const CANVAS_W = 1920;
+const CANVAS_H = 1080;
 
 type LayerType = "text" | "image";
 
@@ -239,13 +239,13 @@ export default function ThumbnailStudioPage() {
       id, type: "text",
       x: CANVAS_W / 2, y: CANVAS_H / 2,
       text: preset === "title" ? "메인 타이틀 입력" : preset === "subtitle" ? "서브 자막 입력" : "강조 타이틀 입력!",
-      fontSize: preset === "title" ? 140 : preset === "subtitle" ? 60 : 160,
+      fontSize: preset === "title" ? 210 : preset === "subtitle" ? 90 : 240,
       fontFamily: "var(--font-pretendard), sans-serif",
       isBold: true, isItalic: preset === "accent",
       color: preset === "accent" ? "#FFEB3B" : "#FFFFFF",
       strokeColor: "#000000",
-      strokeWidth: preset === "title" ? 12 : preset === "subtitle" ? 6 : 18,
-      shadowBlur: 20,
+      strokeWidth: preset === "title" ? 18 : preset === "subtitle" ? 10 : 25,
+      shadowBlur: 30,
       shadowColor: "rgba(0,0,0,0.8)"
     };
     setLayers(prev => [...prev, newText]);
@@ -314,7 +314,7 @@ export default function ThumbnailStudioPage() {
     const tgt = layers.find(l => l.id === selectedId);
     if (!tgt) return;
     const newId = `${tgt.type}_${Date.now()}`;
-    const newL = { ...tgt, id: newId, x: tgt.x + 40, y: tgt.y + 40 } as Layer;
+    const newL = { ...tgt, id: newId, x: tgt.x + 60, y: tgt.y + 60 } as Layer;
     setLayers(prev => [...prev, newL]);
     setSelectedId(newId);
   };
@@ -489,12 +489,12 @@ export default function ThumbnailStudioPage() {
 
                   <div>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>윤곽선 두께 ({(selectedLayer as TextLayer).strokeWidth}px)</div>
-                    <input type="range" min="0" max="40" value={(selectedLayer as TextLayer).strokeWidth} onChange={e => updateSelectedText("strokeWidth", Number(e.target.value))} style={{ width: "100%", accentColor: "var(--brand)" }} />
+                    <input type="range" min="0" max="60" value={(selectedLayer as TextLayer).strokeWidth} onChange={e => updateSelectedText("strokeWidth", Number(e.target.value))} style={{ width: "100%", accentColor: "var(--brand)" }} />
                   </div>
                   
                   <div>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>그림자(Glow) 효과 강도 ({(selectedLayer as TextLayer).shadowBlur})</div>
-                    <input type="range" min="0" max="60" value={(selectedLayer as TextLayer).shadowBlur} onChange={e => updateSelectedText("shadowBlur", Number(e.target.value))} style={{ width: "100%", accentColor: "var(--brand)" }} />
+                    <input type="range" min="0" max="80" value={(selectedLayer as TextLayer).shadowBlur} onChange={e => updateSelectedText("shadowBlur", Number(e.target.value))} style={{ width: "100%", accentColor: "var(--brand)" }} />
                   </div>
                 </>
               )}
@@ -503,7 +503,7 @@ export default function ThumbnailStudioPage() {
                 <>
                   <div>
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>이미지 너비 ({(selectedLayer as ImageLayer).width.toFixed(0)}px)</div>
-                    <input type="range" min="50" max="2500" value={(selectedLayer as ImageLayer).width} onChange={e => {
+                    <input type="range" min="50" max="3800" value={(selectedLayer as ImageLayer).width} onChange={e => {
                        const w = Number(e.target.value);
                        const ratio = (selectedLayer as ImageLayer).height / (selectedLayer as ImageLayer).width;
                        updateSelectedImg("width", w);
