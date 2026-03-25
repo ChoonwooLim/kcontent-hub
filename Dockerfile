@@ -8,6 +8,7 @@ RUN npx prisma generate 2>/dev/null || true
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV AUTH_SECRET="kcontent-studio-secret-key-2026-orbitron"
 ENV AUTH_TRUST_HOST=true
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npm run build
 RUN mkdir -p public prisma
 
