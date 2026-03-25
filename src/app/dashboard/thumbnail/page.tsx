@@ -46,98 +46,98 @@ const STYLE_TEMPLATES = [
     name: "1. 💥 폭로/어그로 (대반전)",
     bgImage: "https://images.unsplash.com/photo-1508672019048-805c876b67e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "단독 공개!", fontSize: 130, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 20, shadowBlur: 40, shadowColor: "rgba(225,29,72,0.8)", x: 300, y: 180, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "그날 방안에서 일어난", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, x: 960, y: 760, shadowBlur: 30, shadowColor: "black", fontFamily: "'Do Hyeon', sans-serif" },
-      { text: "충격적인 진실?!", fontSize: 280, isBold: true, isItalic: true, color: "#FDE047", strokeColor: "#000000", strokeWidth: 40, x: 960, y: 920, shadowBlur: 50, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "단독 공개!", fontSize: 100, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 15, shadowBlur: 30, shadowColor: "rgba(225,29,72,0.8)", x: 250, y: 150, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "그날 방안에서 일어난", fontSize: 120, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 12, x: 960, y: 720, shadowBlur: 20, shadowColor: "black", fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "충격적인 진실?!", fontSize: 180, isBold: true, isItalic: true, color: "#FDE047", strokeColor: "#000000", strokeWidth: 25, x: 960, y: 880, shadowBlur: 40, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
     name: "2. 🚨 긴급 속보 (뉴스형 분석)",
     bgImage: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "[긴급 속보]", fontSize: 140, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, x: 280, y: 150, shadowBlur: 20, shadowColor: "rgba(0,0,0,0.8)", fontFamily: "var(--font-pretendard), sans-serif" },
-      { text: "한국 경제의 골든타임", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#1D4ED8", strokeWidth: 25, x: 960, y: 750, shadowBlur: 40, shadowColor: "black", fontFamily: "'Noto Sans KR', sans-serif" },
-      { text: "드디어 터졌다!", fontSize: 260, isBold: true, isItalic: false, color: "#F87171", strokeColor: "#000000", strokeWidth: 35, x: 960, y: 950, shadowBlur: 60, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "[긴급 속보]", fontSize: 90, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 10, x: 220, y: 120, shadowBlur: 15, shadowColor: "rgba(0,0,0,0.8)", fontFamily: "var(--font-pretendard), sans-serif" },
+      { text: "한국 경제의 골든타임", fontSize: 140, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#1D4ED8", strokeWidth: 20, x: 960, y: 720, shadowBlur: 30, shadowColor: "black", fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "드디어 터졌다!", fontSize: 190, isBold: true, isItalic: false, color: "#F87171", strokeColor: "#000000", strokeWidth: 25, x: 960, y: 890, shadowBlur: 50, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
     name: "3. 🎙️ 감성 브이로그 (일상형)",
     bgImage: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "나만의 소소한 힐링 기록", fontSize: 140, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 40, shadowColor: "rgba(0,0,0,0.5)", x: 960, y: 540, fontFamily: "var(--font-pretendard), sans-serif" },
-      { text: "sunday morning ep.01", fontSize: 80, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 20, shadowColor: "rgba(0,0,0,0.4)", x: 960, y: 720, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: "나만의 소소한 힐링 기록", fontSize: 100, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 30, shadowColor: "rgba(0,0,0,0.6)", x: 960, y: 500, fontFamily: "var(--font-pretendard), sans-serif" },
+      { text: "sunday morning ep.01", fontSize: 60, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 15, shadowColor: "rgba(0,0,0,0.5)", x: 960, y: 640, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   },
   {
     name: "4. 🎤 팬튜브 직캠 (예능형)",
     bgImage: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "미모가 진짜 미쳤습니다", fontSize: 220, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#EC4899", strokeWidth: 30, shadowBlur: 80, shadowColor: "#EC4899", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "레전드 찍은 역대급 무대", fontSize: 140, isBold: true, isItalic: false, color: "#FFD700", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 150, fontFamily: "'Do Hyeon', sans-serif" }
+      { text: "미모가 진짜 미쳤습니다", fontSize: 150, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#EC4899", strokeWidth: 20, shadowBlur: 60, shadowColor: "#EC4899", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "레전드 찍은 역대급 무대", fontSize: 110, isBold: true, isItalic: false, color: "#FFD700", strokeColor: "#000000", strokeWidth: 12, shadowBlur: 20, shadowColor: "black", x: 960, y: 150, fontFamily: "'Do Hyeon', sans-serif" }
     ]
   },
   {
     name: "5. 🍲 먹방 투어 (음식형)",
     bgImage: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "이 가격에 이 퀄리티?!", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#EA580C", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
-      { text: "인생 맛집 찾았습니다", fontSize: 250, isBold: true, isItalic: false, color: "#FEF08A", strokeColor: "#000000", strokeWidth: 35, shadowBlur: 50, shadowColor: "black", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "이 가격에 이 퀄리티?!", fontSize: 130, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#EA580C", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 160, fontFamily: "'Jua', sans-serif" },
+      { text: "인생 맛집 찾았습니다", fontSize: 180, isBold: true, isItalic: false, color: "#FEF08A", strokeColor: "#000000", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
     name: "6. ✨ 리뷰/테크 (IT분석형)",
     bgImage: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "이거 안 사면 후회합니다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#2563EB", strokeWidth: 20, shadowBlur: 60, shadowColor: "rgba(37,99,235,0.7)", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" },
-      { text: "무조건 사야하는 진짜 이유", fontSize: 110, isBold: true, isItalic: false, color: "#93C5FD", strokeColor: "#000000", strokeWidth: 12, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: "이거 안 사면 후회합니다", fontSize: 140, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#2563EB", strokeWidth: 18, shadowBlur: 50, shadowColor: "rgba(37,99,235,0.7)", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "무조건 사야하는 진짜 이유", fontSize: 100, isBold: true, isItalic: false, color: "#93C5FD", strokeColor: "#000000", strokeWidth: 10, shadowBlur: 15, shadowColor: "black", x: 960, y: 160, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   },
   {
     name: "7. 🎬 영화 요약 (스토리텔링)",
     bgImage: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "지구에 불시착한 외계인이", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 20, shadowBlur: 50, shadowColor: "black", x: 960, y: 780, fontFamily: "'Do Hyeon', sans-serif" },
-      { text: "한국에서 겪은 충격적인 일", fontSize: 210, isBold: true, isItalic: false, color: "#FF4500", strokeColor: "#000", strokeWidth: 25, shadowBlur: 50, shadowColor: "black", x: 960, y: 960, fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "지구에 불시착한 외계인이", fontSize: 130, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 40, shadowColor: "black", x: 960, y: 740, fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "한국에서 겪은 충격적인 일", fontSize: 160, isBold: true, isItalic: false, color: "#FF4500", strokeColor: "#000", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
     name: "8. ✈️ 세계 여행 (비행꿀팁)",
     bgImage: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "비행기 표 50% 아끼는", fontSize: 150, isBold: true, isItalic: false, color: "#FEF08A", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
-      { text: "초특급 예매의 비밀", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" }
+      { text: "비행기 표 50% 아끼는", fontSize: 120, isBold: true, isItalic: false, color: "#FEF08A", strokeColor: "#000000", strokeWidth: 12, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "'Jua', sans-serif" },
+      { text: "초특급 예매의 비밀", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" }
     ]
   },
   {
     name: "9. 📈 주식/재테크 (폭등예고)",
     bgImage: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "내일부터 무조건 오릅니다", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 26, shadowBlur: 40, shadowColor: "#E11D48", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "전문가 긴급 차트 분석", fontSize: 120, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 300, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: "내일부터 무조건 오릅니다", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 20, shadowBlur: 40, shadowColor: "#E11D48", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "전문가 긴급 차트 분석", fontSize: 80, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000000", strokeWidth: 8, shadowBlur: 15, shadowColor: "black", x: 280, y: 120, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   },
   {
     name: "10. 🎮 게임 하이라이트 (매드무비)",
     bgImage: "https://images.unsplash.com/photo-1542751371-adc38448a05e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "1 대 5를 이겨버린다고?", fontSize: 240, isBold: true, isItalic: true, color: "#4ADE80", strokeColor: "#000000", strokeWidth: 35, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "#매드무비 #레전드", fontSize: 100, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "'Do Hyeon', sans-serif" }
+      { text: "1 대 5를 이겨버린다고?", fontSize: 160, isBold: true, isItalic: true, color: "#4ADE80", strokeColor: "#000000", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "#매드무비 #레전드", fontSize: 70, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 8, shadowBlur: 15, shadowColor: "black", x: 960, y: 160, fontFamily: "'Do Hyeon', sans-serif" }
     ]
   },
   {
     name: "11. 🐶 동물/반려견 (귀요미집중)",
     bgImage: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "주인 몰래 간식 훔쳐먹다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#F472B6", strokeWidth: 20, shadowBlur: 30, shadowColor: "black", x: 960, y: 780, fontFamily: "'Jua', sans-serif" },
-      { text: "딱 걸린 댕댕이 상황 ㅋㅋㅋ", fontSize: 220, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000000", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 960, fontFamily: "'Jua', sans-serif" }
+      { text: "주인 몰래 간식 훔쳐먹다", fontSize: 130, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#F472B6", strokeWidth: 15, shadowBlur: 20, shadowColor: "black", x: 960, y: 740, fontFamily: "'Jua', sans-serif" },
+      { text: "딱 걸린 댕댕이 상황 ㅋㅋㅋ", fontSize: 160, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000000", strokeWidth: 18, shadowBlur: 30, shadowColor: "black", x: 960, y: 890, fontFamily: "'Jua', sans-serif" }
     ]
   },
   {
     name: "12. 💬 인터뷰/대담 (인물집중)",
     bgImage: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: `"제가 사실 그때..."`, fontSize: 170, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 50, shadowColor: "black", x: 960, y: 760, fontFamily: "'Noto Sans KR', sans-serif" },
-      { text: "드디어 밝혀진 진짜 이유", fontSize: 130, isBold: true, isItalic: false, color: "#D1D5DB", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: `"제가 사실 그때..."`, fontSize: 130, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 12, shadowBlur: 30, shadowColor: "black", x: 960, y: 730, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "드디어 밝혀진 진짜 이유", fontSize: 90, isBold: true, isItalic: false, color: "#D1D5DB", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   }
 ];
