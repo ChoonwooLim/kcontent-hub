@@ -844,13 +844,19 @@ function ScriptPageInner() {
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
                 >
                   {/* 썸네일 */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
-                    alt={s.title}
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    style={{ width: 100, height: 56, objectFit: "cover", borderRadius: 6, flexShrink: 0, border: "1px solid var(--border-subtle)" }}
-                  />
+                  {s.videoId ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={`https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
+                      alt={s.title}
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      style={{ width: 100, height: 56, objectFit: "cover", borderRadius: 6, flexShrink: 0, border: "1px solid var(--border-subtle)" }}
+                    />
+                  ) : (
+                    <div style={{ width: 100, height: 56, borderRadius: 6, flexShrink: 0, border: "1px solid var(--border-subtle)", background: "var(--bg-void)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Film size={22} color="var(--border-subtle)" />
+                    </div>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {s.title}
