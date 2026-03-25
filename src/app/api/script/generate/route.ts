@@ -88,66 +88,93 @@ export async function POST(req: NextRequest) {
   // ── 3단계: GPT-4o 한국어 대본 생성 ────────────────────────────
   const hasTranscript = transcriptText.length > 0;
 
-  const systemPrompt = `당신은 "코릿치(Koritch)" 채널의 전속 K-콘텐츠 대본 PD입니다.
-해외 외국인이 한국을 방문하거나 한국 문화를 체험하는 YouTube 영상을 분석하여,
-한국 시청자를 위한 감성 자막 대본으로 재창작하는 전문가입니다.
+  const systemPrompt = `당신은 "코릿치(Koritch)" 채널의 전속 영상 대본 PD입니다.
 
-채널 브랜딩 규칙 (반드시 지킬 것):
-- 대본의 첫 번째 장면(00:00)은 반드시 "코릿치" 오프닝 인사말입니다
-  예시: "안녕하세요, 코릿치입니다! 오늘은 외국인이 한국에서 ○○한 이야기를 가져왔습니다"
-  변형: "코릿치에 오신 걸 환영합니다!", "여러분의 코릿치가 돌아왔습니다!" 등
-- 대본의 마지막 장면은 반드시 "코릿치" 클로징 인사말입니다
-  예시: "오늘도 코릿치와 함께해 주셔서 감사합니다! 구독과 좋아요 꾹~ 다음 영상에서 만나요!"
-  변형: "코릿치는 다음에 더 재밌는 영상으로 돌아올게요!", "코릿치였습니다, 안녕!" 등
-- 오프닝/클로징의 type은 "opening", "closing"으로 설정
+■ 코릿치 채널 소개:
+- 외국인이 한국을 방문하거나 한국 문화를 체험하는 유튜브 영상을 발굴
+- 해당 영상에 한국어 자막을 입히고, 코릿치 MC의 나레이션을 추가하여 새로운 콘텐츠로 재탄생
+- 한국인 시청자 대상 (국뽕, 감동, 재미, 공감 포인트 극대화)
 
-출력 규칙:
+■ 코릿치 영상 구조 (3파트):
+
+[파트1: 인트로 나레이션] — 코릿치 MC가 직접 촬영한 영상 (20~30초)
+- 코릿치 인사말로 시작
+- 오늘 소개할 외국인 영상이 뭔지, 왜 이 영상을 골랐는지 설명
+- 한국인 시청자가 관심 가질만한 핵심 포인트를 티저처럼 미리 언급
+- "자, 그럼 바로 영상 보시죠!" 같은 전환 멘트로 마무리
+
+[파트2: 본편 보조 나레이션] — 외국인 원본 영상이 재생되는 동안 중간중간 삽입
+- 외국인이 말하는 것에 대한 보충 설명 (문화적 맥락, 배경 지식)
+- 재미있는 코멘트나 감성 포인트 ("이 표정 보세요!", "여기서 소름 돋았습니다")
+- 시청자 공감 유도 ("우리가 당연하다고 생각한 게 이렇게 특별한 거였네요")
+- 영상의 핵심 장면마다 적절히 배치 (너무 자주 끊기지 않게, 1~2분마다 1개)
+
+[파트3: 아웃트로 나레이션] — 코릿치 MC가 직접 촬영한 영상 (약 10초)
+- 영상을 본 소감 한마디
+- 구독/좋아요/알림 유도
+- 코릿치 마무리 인사 ("코릿치였습니다, 다음 영상에서 만나요!")
+
+■ 출력 규칙:
 - JSON 형식으로만 응답 (마크다운 코드블록 없이 순수 JSON)
-- 타임스탬프는 영상 자막 오프셋 기준으로 MM:SS 형식
-- 대본 유형: opening(오프닝), hook(훅/충격), reaction(외국인반응), narration(나레이션), commentary(해설), closing(클로징)
-- 한국 시청자 감성 최적화: 국뽕, 공감, 충격, 재미 포인트 강조`;
+- 각 나레이션에 예상 소요 시간(초)을 durationSec 필드로 명시
+- 대본 유형: intro(인트로), hook(훅), context(맥락설명), reaction(반응해설), humor(유머/재미), emotion(감성), outro(아웃트로)`;
 
-  // 영상 길이 기반 최소 장면 수 계산
+  // 영상 길이 기반 보조 나레이션 수 계산
   function parseDurationSecs(iso: string): number {
     const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     if (!m) return 0;
     return (parseInt(m[1]||"0")*3600) + (parseInt(m[2]||"0")*60) + parseInt(m[3]||"0");
   }
   const durationSecs = parseDurationSecs(duration);
-  const minScenes = Math.max(12, Math.floor(durationSecs / 40)); // 40초당 1장면, 최소 12개
+  const midNarrationCount = Math.max(5, Math.floor(durationSecs / 90)); // 90초당 1개, 최소 5개
   const durationLabel = durationSecs > 0
     ? `${Math.floor(durationSecs/60)}분 ${durationSecs%60}초`
     : "알 수 없음";
 
-  const userPrompt = `다음 YouTube 영상 정보를 바탕으로 "코릿치(Koritch)" 채널의 한국어 자막 대본을 생성하세요.
+  const userPrompt = `다음 외국인 YouTube 영상을 분석하여 "코릿치(Koritch)" 채널용 3파트 나레이션 대본을 생성하세요.
 
-영상 제목: ${videoTitle || "정보 없음"}
-채널명: ${channelTitle || "정보 없음"}
-영상 길이: ${durationLabel}
-${videoDescription ? `영상 설명: ${videoDescription}` : ""}
-${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: 자막 없음 — 제목과 설명만으로 대본 창작"}
+■ 분석할 영상 정보:
+- 제목: ${videoTitle || "정보 없음"}
+- 채널: ${channelTitle || "정보 없음"}
+- 길이: ${durationLabel}
+${videoDescription ? `- 설명: ${videoDescription}` : ""}
+${hasTranscript ? `\n■ 원본 자막 (이 영상에는 이미 한국어 자막이 입혀져 있음):\n${transcriptText}` : "\n⚠ 자막 없음 — 제목과 설명만으로 대본 창작"}
 
-[중요] 코릿치 채널 대본 구조:
-1. 첫 장면(00:00) = 코릿치 오프닝 인사말 (type: "opening")
-2. 본문 = 영상 내용 대본 (${minScenes}개 이상)
-3. 마지막 장면 = 코릿치 클로징 인사말 (type: "closing")
+■ 코릿치 대본 요구사항:
 
-- 영상 길이: ${durationLabel}
-- 타임스탬프를 영상 시작(00:00)부터 끝까지 균등하게 배분하세요
-- 자막 원문이 있으면 실제 대사/장면을 반영하세요
+[파트1: 인트로] (20~30초 분량, 3~5개 나레이션)
+- 코릿치 인사말 → 영상 소개 → 왜 볼만한지 → "바로 보시죠!" 전환
+
+[파트2: 본편 보조 나레이션] (영상 길이: ${durationLabel}, ${midNarrationCount}개 이상)
+- 원본 영상의 타임스탬프 기준으로 중간중간 삽입
+- 보충 설명, 재미 코멘트, 감성 포인트 등
+- 자막 내용을 분석하여 핵심 장면에 배치
+
+[파트3: 아웃트로] (약 10초, 2~3개 나레이션)
+- 소감 → 구독 유도 → 코릿치 마무리 인사
 
 다음 JSON을 정확히 반환하세요:
 {
   "title": "CTR 최적화 한국어 제목 (클릭 유도, 60자 이내)",
   "thumbnailTop": "썸네일 상단 텍스트 (충격/호기심 유발, 15자 이내)",
   "thumbnailBottom": "썸네일 하단 임팩트 문구 (12자 이내, 따옴표 포함 가능)",
-  "script": [
-    { "time": "00:00", "type": "opening",   "ko": "안녕하세요, 코릿치입니다! 오늘은..." },
-    { "time": "00:05", "type": "hook",       "ko": "시청자를 사로잡는 첫 문장" },
-    { "time": "00:30", "type": "narration",  "ko": "상황 설명" },
-    { "time": "01:00", "type": "reaction",   "ko": "외국인 반응 묘사" },
-    ...${minScenes}개 이상의 장면 (영상 끝까지 커버),
-    { "time": "마지막", "type": "closing", "ko": "오늘도 코릿치와 함께해 주셔서 감사합니다! 구독과 좋아요 꾹~" }
+  "intro": [
+    { "order": 1, "type": "intro", "ko": "안녕하세요, 코릿치입니다!", "durationSec": 3 },
+    { "order": 2, "type": "hook", "ko": "오늘은 외국인이 한국에서 ○○한 영상을 가져왔는데요", "durationSec": 5 },
+    { "order": 3, "type": "context", "ko": "이 영상이 특별한 이유는...", "durationSec": 8 },
+    { "order": 4, "type": "hook", "ko": "자, 그럼 바로 영상 보시죠!", "durationSec": 3 }
+  ],
+  "midRoll": [
+    { "time": "00:30", "type": "context",  "ko": "여기서 잠깐! ○○은 한국의 ○○인데요", "durationSec": 5 },
+    { "time": "01:15", "type": "reaction", "ko": "이 표정 보세요! 진짜 감동받은 거예요", "durationSec": 4 },
+    { "time": "02:00", "type": "humor",    "ko": "이 부분에서 저도 빵 터졌습니다 ㅋㅋ", "durationSec": 3 },
+    { "time": "03:30", "type": "emotion",  "ko": "우리가 당연하게 생각한 것들이...", "durationSec": 6 },
+    ...${midNarrationCount}개 이상 (영상 전체에 걸쳐 균등 배치)
+  ],
+  "outro": [
+    { "order": 1, "type": "emotion", "ko": "정말 따뜻한 영상이었습니다", "durationSec": 3 },
+    { "order": 2, "type": "outro",   "ko": "구독과 좋아요는 코릿치에게 큰 힘이 됩니다!", "durationSec": 4 },
+    { "order": 3, "type": "outro",   "ko": "코릿치였습니다, 다음 영상에서 만나요!", "durationSec": 3 }
   ]
 }`;
 
@@ -178,11 +205,16 @@ ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: �
   const openaiData = await openaiRes.json();
   const rawContent = openaiData.choices?.[0]?.message?.content ?? "";
 
+  type NarrationLine = { time?: string; order?: number; type: string; ko: string; durationSec?: number };
+
   let parsed: {
     title: string;
     thumbnailTop: string;
     thumbnailBottom: string;
-    script: { time: string; type: string; ko: string }[];
+    intro?: NarrationLine[];
+    midRoll?: NarrationLine[];
+    outro?: NarrationLine[];
+    script?: { time: string; type: string; ko: string }[]; // 하위 호환
   };
 
   try {
@@ -196,6 +228,13 @@ ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: �
     }, { status: 500 });
   }
 
+  // 3파트 → 기존 script 배열 호환 (프론트엔드 타임라인 뷰 유지)
+  const script = parsed.script ?? [
+    ...(parsed.intro || []).map(l => ({ time: l.time || `인트로 ${l.order || 0}`, type: l.type, ko: l.ko })),
+    ...(parsed.midRoll || []).map(l => ({ time: l.time || "", type: l.type, ko: l.ko })),
+    ...(parsed.outro || []).map(l => ({ time: l.time || `아웃트로 ${l.order || 0}`, type: l.type, ko: l.ko })),
+  ];
+
   return NextResponse.json({
     videoId,
     videoTitle,
@@ -204,6 +243,11 @@ ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: �
     title: parsed.title,
     thumbnailTop: parsed.thumbnailTop,
     thumbnailBottom: parsed.thumbnailBottom,
-    script: parsed.script,
+    // 3파트 구조
+    intro: parsed.intro || [],
+    midRoll: parsed.midRoll || [],
+    outro: parsed.outro || [],
+    // 하위 호환 (기존 타임라인 뷰)
+    script,
   });
 }

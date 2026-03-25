@@ -53,10 +53,14 @@ type SavedScript = {
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  opening: "#f472b6", hook: "#f59e0b", reaction: "#6366f1", narration: "#10b981", commentary: "#ec4899", closing: "#22d3ee",
+  intro: "#f472b6", hook: "#f59e0b", context: "#818cf8", reaction: "#6366f1",
+  humor: "#fbbf24", emotion: "#34d399", narration: "#10b981", commentary: "#ec4899",
+  outro: "#22d3ee", opening: "#f472b6", closing: "#22d3ee",
 };
 const TYPE_LABEL: Record<string, string> = {
-  opening: "오프닝", hook: "훅", reaction: "반응", narration: "나레이션", commentary: "해설", closing: "클로징",
+  intro: "인트로", hook: "훅", context: "맥락설명", reaction: "반응해설",
+  humor: "유머", emotion: "감성", narration: "나레이션", commentary: "해설",
+  outro: "아웃트로", opening: "오프닝", closing: "클로징",
 };
 
 /* ── YouTube IFrame Player 타입 ────────────────────────── */
