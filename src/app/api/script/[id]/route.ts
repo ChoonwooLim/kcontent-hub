@@ -13,8 +13,10 @@ export async function GET(
       return NextResponse.json({ error: "대본을 찾을 수 없습니다." }, { status: 404 });
     }
     return NextResponse.json({
-      ...script,
-      script: JSON.parse(script.scriptJson),
+      script: {
+        ...script,
+        script: JSON.parse(script.scriptJson),
+      }
     });
   } catch (err) {
     return NextResponse.json({ error: `DB 오류: ${String(err)}` }, { status: 500 });
