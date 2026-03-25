@@ -36,8 +36,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "videoId, title, script는 필수입니다." }, { status: 400 });
     }
 
-    // 같은 videoId로 이미 저장된 대본이 있으면 업데이트, 없으면 새로 생성
-    const existing = await prisma.script.findFirst({ where: { videoId } });
+    // 같은 videoId로 이미 저장된 대본이 있으면 업데이트 (단, 로컬 영상 즉 videoId가 빈 문자열인 경우 제외 - 혹은 title로 매칭)
+    let existing = null;
+    if (videoId) {
+      existing = await prisma.script.findFirst({ where: { videoId } });
+    } else if (title) {
+      // 로컬 영상의 경우 제목으로 구분 (동일 제목이면 덮어쓰기)
+      existing = await prisma.script.findFirst({ where: { videoId: "", title } });
+    }
 
     if (existing) {
       const updated = await prisma.script.update({

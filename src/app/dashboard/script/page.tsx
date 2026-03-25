@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import {
   Link2, Sparkles, Copy, Check, Film,
   Zap, AlertCircle, Loader, CheckCircle2, Image as ImageIcon,
-  Camera, X, Download, Maximize2, Trash2, Clock, FileText, ChevronRight, Save
+  Camera, X, Download, Maximize2, Trash2, Clock, FileText, ChevronRight, Save, FolderOpen
 } from "lucide-react";
 
 type ScriptLine = { time: string; type: string; ko: string };
@@ -441,6 +441,8 @@ function ScriptPageInner() {
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(true); // 초기 로딩 true
   const [loadingScript, setLoadingScript] = useState<string | null>(null);
+  const [showSessions, setShowSessions] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // 페이지 진입 시 저장된 대본 목록 로드 (1회만)
   useEffect(() => {
@@ -513,28 +515,36 @@ function ScriptPageInner() {
     } catch { /* 무시 */ }
   };
 
-  // 대본 DB 저장
-  const saveToDb = async (data: Result, framesObj?: Record<string, FrameData>, capturesArr?: CapturedImage[]) => {
+  const manualSave = async () => {
+    if (!result) return;
+    setLoading(true);
+    setSaveMessage(null);
     try {
       await fetch("/api/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoId: data.videoId,
-          videoTitle: data.videoTitle,
-          channelTitle: data.channelTitle,
-          hasTranscript: data.hasTranscript,
-          title: data.title,
-          thumbnailTop: data.thumbnailTop,
-          thumbnailBottom: data.thumbnailBottom,
-          script: data.script,
-          frames: framesObj ?? frames,
-          captures: capturesArr ?? captures,
+          videoId: result.videoId,
+          videoTitle: result.videoTitle,
+          channelTitle: result.channelTitle,
+          hasTranscript: result.hasTranscript,
+          title: result.title,
+          thumbnailTop: result.thumbnailTop,
+          thumbnailBottom: result.thumbnailBottom,
+          script: result.script,
+          frames,
+          captures,
         }),
       });
-      // 목록 갱신
       fetchSavedScripts();
-    } catch { /* 저장 실패 무시 */ }
+      setSaveMessage("✓ 저장되었습니다");
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch { 
+      setSaveMessage("✗ 저장 실패");
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const generate = async () => {
@@ -574,8 +584,12 @@ function ScriptPageInner() {
       }
       setResult(data);
 
-      // 자동 DB 저장
-      saveToDb(data);
+      // 자동 DB 저장 (백그라운드)
+      fetch("/api/script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...data, frames: {}, captures: [] }),
+      }).then(() => fetchSavedScripts()).catch(() => {});
 
       if (data.videoId && data.script?.length) {
         loadFrames(data.videoId, data.script);
@@ -594,7 +608,9 @@ function ScriptPageInner() {
     setLoadingFrames(true);
     try {
       const video = document.createElement("video");
-      video.src = videoUrl;
+      // 이전 영상이 브라우저 캐시에 남아있어 동일 URL 요청 시 이전 영상 이미지가 캡처되는 문제 해결
+      const cacheBustedUrl = videoUrl + (videoUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+      video.src = cacheBustedUrl;
       video.crossOrigin = "anonymous";
       video.muted = true;
       video.playsInline = true;
@@ -654,14 +670,6 @@ function ScriptPageInner() {
       setFrames(frameMap);
     } catch { /* 프레임 캡처 실패 무시 */ }
     finally { setLoadingFrames(false); }
-  };
-
-  const manualSave = async () => {
-    if (!result) return;
-    setLoading(true);
-    await saveToDb(result, frames, captures);
-    setLoading(false);
-    alert("현재 대본과 캡처된 프레임이 저장되었습니다.");
   };
 
   const loadFrames = async (videoId: string, script: ScriptLine[]) => {
@@ -732,15 +740,112 @@ function ScriptPageInner() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1100 }}>
-      <div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>AI 대본 엔진</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          YouTube URL → 실제 자막 추출 + GPT-4o → K-문화 한국어 대본 · 씬별 영상 프레임
-        </p>
+      {/* ── 상단 타이틀 및 저장 버튼 (자막 스튜디오와 동일) ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>AI 대본 엔진</h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            YouTube 원본 영상 피싱 · GPT-4o 대본 생성 · 씬별 영상 프레임 캡처
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ gap: 6, fontSize: 12 }}
+            onClick={() => setShowSessions(!showSessions)}
+          >
+            <FolderOpen size={14} />
+            저장된 작업 ({savedScripts.length})
+          </button>
+          <button
+            className="btn btn-brand btn-sm"
+            style={{ gap: 6, fontSize: 12 }}
+            disabled={!result || loading}
+            onClick={manualSave}
+          >
+            {loading
+              ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />저장 중...</>
+              : <><Save size={14} />현재 작업 저장</>
+            }
+          </button>
+        </div>
       </div>
+      {saveMessage && (
+        <div style={{
+          fontSize: 11, padding: "6px 12px", borderRadius: 6, width: "fit-content", alignSelf: "flex-end", marginTop: -14,
+          color: saveMessage.startsWith("✓") ? "#34d399" : "#f87171",
+          background: saveMessage.startsWith("✓") ? "rgba(52,211,153,0.06)" : "rgba(239,68,68,0.06)",
+          border: `1px solid ${saveMessage.startsWith("✓") ? "rgba(52,211,153,0.2)" : "rgba(239,68,68,0.2)"}`,
+        }}>
+          {saveMessage}
+        </div>
+      )}
 
-      {/* URL 입력 */}
-      <div className="card" style={{ padding: 20 }}>
+      {/* ── 세션(저장된 대본) 목록 (자막 스튜디오와 동일한 토글 패널) ── */}
+      {showSessions && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            <FolderOpen size={14} color="#818cf8" />
+            저장된 대본 목록
+          </div>
+          {savedScripts.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>
+              저장된 대본이 없습니다. 대본을 캡처한 후 &quot;현재 작업 저장&quot; 버튼을 클릭하세요.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
+              {savedScripts.map(s => (
+                <div key={s.id}
+                  onClick={() => { setShowSessions(false); loadSavedScript(s.id); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 14, padding: "12px 18px",
+                    borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                    border: "1px solid var(--border-default)", background: "var(--bg-elevated)",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.background = "var(--brand-dim)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
+                >
+                  {/* 썸네일 */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
+                    alt={s.title}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    style={{ width: 100, height: 56, objectFit: "cover", borderRadius: 6, flexShrink: 0, border: "1px solid var(--border-subtle)" }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.title}
+                    </div>
+                    <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text-muted)" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                        <FileText size={10} />{s.sceneCount}개 씬
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                        <Clock size={10} />{new Date(s.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      {s.hasTranscript && <span style={{ color: "#34d399" }}>✓ 실제 자막</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); deleteSavedScript(s.id); }} style={{ padding: "4px 6px", opacity: 0.5 }}>
+                      <Trash2 size={13} color="#f87171" />
+                    </button>
+                    {loadingScript === s.id
+                      ? <Loader size={14} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
+                      : <ChevronRight size={16} color="var(--text-muted)" />
+                    }
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* URL 입력 (대본 데이터 없을 때) */}
+      {!result && (
+        <div className="card" style={{ padding: 20 }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <div className="input-group" style={{ flex: 1 }}>
             <Link2 size={15} className="input-icon" />
@@ -768,6 +873,7 @@ function ScriptPageInner() {
           ))}
         </div>
       </div>
+      )}
 
       {/* 로딩 */}
       {loading && (
@@ -788,15 +894,7 @@ function ScriptPageInner() {
 
       {/* 결과 */}
       {result && (
-        <div style={{ marginBottom: 10 }}>
-          <button 
-            className="btn btn-ghost btn-sm" 
-            onClick={() => setResult(null)}
-            style={{ padding: "6px 14px", border: "1px solid var(--border-subtle)" }}
-          >
-            ← 대본 목록으로 돌아가기 (다른 영상 작업)
-          </button>
-        </div>
+        <></>
       )}
       {result && (
         <>
@@ -848,9 +946,6 @@ function ScriptPageInner() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" onClick={manualSave}>
-                  <Save size={12} />수동 저장
-                </button>
                 <button className="btn btn-ghost btn-sm" onClick={copyAll}>
                   {copied ? <><Check size={12} color="#34d399" />복사됨</> : <><Copy size={12} />전체 복사</>}
                 </button>
@@ -972,104 +1067,6 @@ function ScriptPageInner() {
             onDownload={handleDownloadCapture}
             onSendToStudio={sendToStudio}
           />
-        </>
-      )}
-
-      {/* 저장된 대본 목록 + 초기 안내 */}
-      {!loading && !error && (
-        <>
-          {/* 저장된 대본 목록 */}
-          {(savedScripts.length > 0 || loadingSaved) && (
-            <div className="card" style={{ overflow: "hidden", marginTop: result ? 40 : 0 }}>
-              <div style={{
-                padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)",
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-              }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700 }}>저장된 대본</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                    생성된 대본이 자동으로 저장됩니다 · 클릭하여 불러오기
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{savedScripts.length}개</div>
-              </div>
-
-              {loadingSaved ? (
-                <div style={{ padding: 30, textAlign: "center" }}>
-                  <Loader size={18} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
-                </div>
-              ) : (
-                <div>
-                  {savedScripts.map(s => (
-                    <div key={s.id}
-                      onClick={() => loadSavedScript(s.id)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 14,
-                        padding: "12px 18px", cursor: "pointer",
-                        borderBottom: "1px solid rgba(30,30,46,0.5)",
-                        transition: "background 0.15s",
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(99,102,241,0.04)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "")}
-                    >
-                      {/* 썸네일 */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
-                        alt={s.title}
-                        style={{ width: 120, height: 68, objectFit: "cover", borderRadius: 6, flexShrink: 0, border: "1px solid var(--border-subtle)" }}
-                      />
-
-                      {/* 정보 */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {s.title}
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 3 }}>
-                          {s.channelTitle || s.videoTitle}
-                        </div>
-                        <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text-muted)" }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                            <FileText size={10} />{s.sceneCount}개 씬
-                          </span>
-                          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                            <Clock size={10} />{new Date(s.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                          {s.hasTranscript && (
-                            <span style={{ color: "#34d399" }}>✓ 실제 자막</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 로딩/액션 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={e => { e.stopPropagation(); deleteSavedScript(s.id); }}
-                          style={{ padding: "4px 6px", opacity: 0.5 }}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                        {loadingScript === s.id
-                          ? <Loader size={14} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
-                          : <ChevronRight size={16} color="var(--text-muted)" />
-                        }
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 초기 안내 (대본 없을 때만) */}
-          {savedScripts.length === 0 && !loadingSaved && !result && (
-            <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)" }}>
-              <Sparkles size={36} style={{ opacity: 0.2, margin: "0 auto 12px" }} />
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>YouTube URL을 입력하세요</div>
-              <div style={{ fontSize: 13 }}>OpenAI API 키가 설정 페이지에 등록되어 있어야 합니다.</div>
-            </div>
-          )}
         </>
       )}
 
