@@ -788,6 +788,17 @@ function ScriptPageInner() {
 
       {/* 결과 */}
       {result && (
+        <div style={{ marginBottom: 10 }}>
+          <button 
+            className="btn btn-ghost btn-sm" 
+            onClick={() => setResult(null)}
+            style={{ padding: "6px 14px", border: "1px solid var(--border-subtle)" }}
+          >
+            ← 대본 목록으로 돌아가기 (다른 영상 작업)
+          </button>
+        </div>
+      )}
+      {result && (
         <>
           {/* 메타 정보 */}
           <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", display: "flex", alignItems: "center", gap: 8, fontSize: 12, flexWrap: "wrap" }}>
@@ -965,11 +976,11 @@ function ScriptPageInner() {
       )}
 
       {/* 저장된 대본 목록 + 초기 안내 */}
-      {!loading && !result && !error && (
+      {!loading && !error && (
         <>
           {/* 저장된 대본 목록 */}
           {(savedScripts.length > 0 || loadingSaved) && (
-            <div className="card" style={{ overflow: "hidden" }}>
+            <div className="card" style={{ overflow: "hidden", marginTop: result ? 40 : 0 }}>
               <div style={{
                 padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)",
                 display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -1052,7 +1063,7 @@ function ScriptPageInner() {
           )}
 
           {/* 초기 안내 (대본 없을 때만) */}
-          {savedScripts.length === 0 && !loadingSaved && (
+          {savedScripts.length === 0 && !loadingSaved && !result && (
             <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--text-muted)" }}>
               <Sparkles size={36} style={{ opacity: 0.2, margin: "0 auto 12px" }} />
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>YouTube URL을 입력하세요</div>
