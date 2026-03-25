@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
   Palette, Sparkles, Check, Link2, Loader, AlertCircle,
@@ -374,9 +375,13 @@ export default function StudioPage() {
     downloadFile(generateVTT(subs), `${videoTitle || "subtitles"}.vtt`, "text/vtt");
   };
 
+  const router = useRouter();
   const handleSendPublisher = () => {
     setExported(true);
-    setTimeout(() => setExported(false), 2000);
+    const url = videoId
+      ? `/dashboard/script?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`
+      : "/dashboard/script";
+    router.push(url);
   };
 
   /* ── 세션 목록 로드 ───────────────────────────────────── */
@@ -989,12 +994,10 @@ export default function StudioPage() {
           </div>
 
           {/* AI 대본엔진 전달 */}
-          <a href={videoId ? `/dashboard/script?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}` : "/dashboard/script"} style={{ textDecoration: "none" }}>
-            <button className="btn btn-brand" onClick={handleSendPublisher}
-              style={{ width: "100%", padding: "12px", fontSize: 14, gap: 8 }}>
-              {exported ? <><Check size={15} />AI 대본엔진으로 전송됨!</> : <><Sparkles size={15} />AI 대본엔진으로 보내기</>}
-            </button>
-          </a>
+          <button className="btn btn-brand" onClick={handleSendPublisher}
+            style={{ width: "100%", padding: "12px", fontSize: 14, gap: 8 }}>
+            {exported ? <><Check size={15} />AI 대본엔진으로 전송됨!</> : <><Sparkles size={15} />AI 대본엔진으로 보내기</>}
+          </button>
         </div>
       </div>
 
