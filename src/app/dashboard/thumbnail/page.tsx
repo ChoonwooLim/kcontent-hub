@@ -718,11 +718,28 @@ export default function ThumbnailStudioPage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, flexShrink: 0 }}>
-          {loadedTemplateId && (
-            <button className="btn btn-ghost" style={{ height: 42, background: "rgba(250, 204, 21, 0.15)", color: "#facc15", border: "1px solid rgba(250, 204, 21, 0.3)", fontSize: 13 }} onClick={() => saveToAssets({ isTemplateUpdate: true })} disabled={isSaving}>
-              {isSaving ? "저장 중..." : "🔄 현재 프리셋 형태(디자인) 덮어쓰기"}
-            </button>
-          )}
+          <button 
+            className="btn btn-ghost" 
+            style={{ 
+              height: 42, 
+              background: loadedTemplateId ? "rgba(250, 204, 21, 0.15)" : "rgba(255,255,255,0.03)", 
+              color: loadedTemplateId ? "#facc15" : "rgba(255,255,255,0.4)", 
+              border: loadedTemplateId ? "1px solid rgba(250, 204, 21, 0.3)" : "1px solid rgba(255,255,255,0.1)", 
+              fontSize: 13,
+              cursor: loadedTemplateId ? "pointer" : "not-allowed"
+            }} 
+            onClick={() => {
+              if (!loadedTemplateId) {
+                alert("불러온 '나만의 프리셋'이 없습니다.\n\n새로운 디자인은 갤러리 아래쪽의 [이 디자인을 내 프리셋으로 신규 저장] 버튼을 눌러 최초 저장하신 후부터 덮어쓰기가 가능합니다.");
+                return;
+              }
+              saveToAssets({ isTemplateUpdate: true });
+            }} 
+            disabled={isSaving}
+          >
+            {isSaving ? "저장 중..." : "🔄 현재 프리셋 디자인 (덮어쓰기)"}
+          </button>
+          
           <button className="btn btn-ghost" style={{ height: 42, background: "rgba(255,255,255,0.05)", fontSize: 13 }} onClick={() => saveToAssets({ isTemplateNew: true })} disabled={isSaving}>
             <Layers size={14} color="#818cf8" style={{ marginRight: 6 }} /> {isSaving ? "저장 중..." : "이 디자인을 내 프리셋으로 신규 저장"}
           </button>
