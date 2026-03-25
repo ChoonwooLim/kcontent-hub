@@ -4,7 +4,7 @@ import { usePathname, redirect } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
-  ChevronRight, Bell, Layers, BarChart2, Scissors, Map,
+  ChevronRight, Bell, Layers, BarChart2, Scissors, Map, FileText,
   LogOut, ChevronDown, Building2
 } from "lucide-react";
 
@@ -20,6 +20,7 @@ const NAV = [
   { href: "/dashboard/channels", label: "채널 관리", icon: Youtube },
   { href: "/dashboard/analytics", label: "수익 분석", icon: BarChart2 },
   { href: "/dashboard/plan", label: "개발계획", icon: Map },
+  { href: "/dashboard/changelog", label: "변경이력", icon: FileText },
   { href: "/dashboard/settings", label: "API 설정", icon: Settings },
 ];
 
