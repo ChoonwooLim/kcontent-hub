@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
   ChevronRight, Bell, BarChart2, Scissors, Map, FileText,
-  LogOut, ChevronDown, Building2
+  LogOut, ChevronDown, Building2, Archive
 } from "lucide-react";
 
 const NAV = [
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/dashboard/editor", label: "영상 변환엔진", icon: Scissors },
   { href: "/dashboard/studio", label: "자막 스튜디오", icon: Film },
   { href: "/dashboard/script", label: "AI 대본 엔진", icon: Cpu },
+  { href: "/dashboard/assets", label: "에셋 보관소", icon: Archive },
   { href: "/dashboard/publisher", label: "멀티플랫폼 배포", icon: Globe },
   { section: "관리" },
   { href: "/dashboard/channels", label: "채널 관리", icon: Youtube },
