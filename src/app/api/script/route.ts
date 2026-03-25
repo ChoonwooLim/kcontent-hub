@@ -30,7 +30,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { videoId, videoTitle, channelTitle, hasTranscript, title, thumbnailTop, thumbnailBottom, script } = body;
+    const { videoId, videoTitle, channelTitle, hasTranscript, title, thumbnailTop, thumbnailBottom, script, frames, captures } = body;
 
     if (!videoId || !title || !script) {
       return NextResponse.json({ error: "videoId, title, script는 필수입니다." }, { status: 400 });
@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
           thumbnailTop: thumbnailTop || existing.thumbnailTop,
           thumbnailBottom: thumbnailBottom || existing.thumbnailBottom,
           scriptJson: JSON.stringify(script),
+          framesJson: frames ? JSON.stringify(frames) : existing.framesJson,
+          capturesJson: captures ? JSON.stringify(captures) : existing.capturesJson,
           sceneCount: Array.isArray(script) ? script.length : 0,
         },
       });
@@ -70,6 +72,8 @@ export async function POST(req: NextRequest) {
         thumbnailTop: thumbnailTop || "",
         thumbnailBottom: thumbnailBottom || "",
         scriptJson: JSON.stringify(script),
+        framesJson: frames ? JSON.stringify(frames) : null,
+        capturesJson: captures ? JSON.stringify(captures) : null,
         sceneCount: Array.isArray(script) ? script.length : 0,
         workspaceId,
       },

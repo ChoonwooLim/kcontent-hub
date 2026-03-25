@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import {
   Link2, Sparkles, Copy, Check, Film,
   Zap, AlertCircle, Loader, CheckCircle2, Image as ImageIcon,
-  Camera, X, Download, Maximize2, Trash2, Clock, FileText, ChevronRight
+  Camera, X, Download, Maximize2, Trash2, Clock, FileText, ChevronRight, Save
 } from "lucide-react";
 
 type ScriptLine = { time: string; type: string; ko: string };
@@ -477,21 +477,29 @@ function ScriptPageInner() {
       const data = await res.json();
       if (res.ok && data.script) {
         setResult({
-          videoId: data.videoId,
-          videoTitle: data.videoTitle,
-          channelTitle: data.channelTitle || "",
-          hasTranscript: data.hasTranscript,
-          title: data.title,
-          thumbnailTop: data.thumbnailTop || "",
-          thumbnailBottom: data.thumbnailBottom || "",
-          script: data.script,
+          videoId: data.script.videoId,
+          videoTitle: data.script.videoTitle,
+          channelTitle: data.script.channelTitle,
+          hasTranscript: data.script.hasTranscript,
+          title: data.script.title,
+          thumbnailTop: data.script.thumbnailTop,
+          thumbnailBottom: data.script.thumbnailBottom,
+          script: typeof data.script.scriptJson === "string" ? JSON.parse(data.script.scriptJson) : data.script.scriptJson,
         });
-        setFrames({});
-        setCaptures([]);
-        // 프레임도 다시 로드
-        if (data.videoId && data.script?.length) {
-          loadFrames(data.videoId, data.script);
+
+        if (data.script.framesJson) {
+           try { setFrames(JSON.parse(data.script.framesJson)); } catch { /* ignore */ }
+        } else {
+           setFrames({});
         }
+
+        if (data.script.capturesJson) {
+           try { setCaptures(JSON.parse(data.script.capturesJson)); } catch { /* ignore */ }
+        } else {
+           setCaptures([]);
+        }
+
+        setError(null);
       }
     } catch { /* 무시 */ }
     finally { setLoadingScript(null); }
@@ -506,7 +514,7 @@ function ScriptPageInner() {
   };
 
   // 대본 DB 저장
-  const saveToDb = async (data: Result) => {
+  const saveToDb = async (data: Result, framesObj?: Record<string, FrameData>, capturesArr?: CapturedImage[]) => {
     try {
       await fetch("/api/script", {
         method: "POST",
@@ -520,6 +528,8 @@ function ScriptPageInner() {
           thumbnailTop: data.thumbnailTop,
           thumbnailBottom: data.thumbnailBottom,
           script: data.script,
+          frames: framesObj ?? frames,
+          captures: capturesArr ?? captures,
         }),
       });
       // 목록 갱신
@@ -613,6 +623,11 @@ function ScriptPageInner() {
         else if (parts.length === 2) sec = parts[0] * 60 + parts[1];
         if (isNaN(sec)) continue;
 
+        // 영상 길이를 초과하는 가상 타임스탬프인 경우, 영상의 가장 뒷부분으로 제한
+        if (sec > video.duration) {
+          sec = Math.max(0, video.duration - 0.5);
+        }
+
         video.currentTime = sec;
         await new Promise<void>((resolve) => {
           const onSeeked = () => { video.removeEventListener("seeked", onSeeked); resolve(); };
@@ -639,6 +654,14 @@ function ScriptPageInner() {
       setFrames(frameMap);
     } catch { /* 프레임 캡처 실패 무시 */ }
     finally { setLoadingFrames(false); }
+  };
+
+  const manualSave = async () => {
+    if (!result) return;
+    setLoading(true);
+    await saveToDb(result, frames, captures);
+    setLoading(false);
+    alert("현재 대본과 캡처된 프레임이 저장되었습니다.");
   };
 
   const loadFrames = async (videoId: string, script: ScriptLine[]) => {
@@ -814,6 +837,9 @@ function ScriptPageInner() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-ghost btn-sm" onClick={manualSave}>
+                  <Save size={12} />수동 저장
+                </button>
                 <button className="btn btn-ghost btn-sm" onClick={copyAll}>
                   {copied ? <><Check size={12} color="#34d399" />복사됨</> : <><Copy size={12} />전체 복사</>}
                 </button>

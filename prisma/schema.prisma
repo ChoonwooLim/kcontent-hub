@@ -163,6 +163,8 @@ model Script {
   thumbnailTop   String?              // 썸네일 상단 카피
   thumbnailBottom String?             // 썸네일 하단 카피
   scriptJson     String   @db.Text    // ScriptLine[] JSON
+  framesJson     String?  @db.Text    // 프레임맵 JSON (FrameData)
+  capturesJson   String?  @db.Text    // 캡처 갤러리 JSON (CapturedImage)
   sceneCount     Int      @default(0) // 씬 수
   
   workspaceId    String
