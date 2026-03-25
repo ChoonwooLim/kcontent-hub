@@ -452,6 +452,11 @@ export default function StudioPage() {
       }
       setVideoTitle(s.videoTitle || "");
       setSubs(s.subs || []);
+      if (s.thumbnail?.startsWith("data:image")) {
+        setCapturedThumbnail(s.thumbnail);
+      } else {
+        setCapturedThumbnail(null);
+      }
       setSubtitleStep(s.step || null);
       setSubtitleMethod(s.method || null);
       setPreset(s.preset ?? 0);
