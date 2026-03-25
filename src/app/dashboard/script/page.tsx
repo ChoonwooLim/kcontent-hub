@@ -373,7 +373,7 @@ function CaptureGallery({
         <div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>캡처된 프레임</div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            {captures.length}개 캡처 · 편집 스튜디오에서 소재로 활용
+            {captures.length}개 캡처 · 자막 스튜디오에서 소재로 활용
           </div>
         </div>
         <button className="btn btn-brand btn-sm" onClick={onSendToStudio}
@@ -756,7 +756,7 @@ function ScriptPageInner() {
                   {copied ? <><Check size={12} color="#34d399" />복사됨</> : <><Copy size={12} />전체 복사</>}
                 </button>
                 <button className="btn btn-brand btn-sm" onClick={sendToStudio}>
-                  <Film size={12} />편집 스튜디오로
+                  <Film size={12} />자막 스튜디오로
                 </button>
               </div>
             </div>
