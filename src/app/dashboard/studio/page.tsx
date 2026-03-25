@@ -378,9 +378,15 @@ export default function StudioPage() {
   const router = useRouter();
   const handleSendPublisher = () => {
     setExported(true);
+    sessionStorage.setItem("studio_to_script", JSON.stringify({
+      videoId: videoId || "",
+      fileVideoUrl: fileVideoUrl || "",
+      videoTitle,
+      subs
+    }));
     const url = videoId
       ? `/dashboard/script?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`
-      : "/dashboard/script";
+      : `/dashboard/script?url=${encodeURIComponent(fileVideoUrl)}`;
     router.push(url);
   };
 

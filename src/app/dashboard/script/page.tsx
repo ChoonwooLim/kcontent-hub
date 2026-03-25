@@ -538,10 +538,26 @@ function ScriptPageInner() {
     setCaptures([]);
 
     try {
+      const requestBody: Record<string, unknown> = { url: url.trim() };
+      
+      try {
+        const s2s = sessionStorage.getItem("studio_to_script");
+        if (s2s) {
+          const data = JSON.parse(s2s);
+          if (
+            (data.fileVideoUrl && url.trim().includes(data.fileVideoUrl)) ||
+            (data.videoId && url.trim().includes(data.videoId))
+          ) {
+             requestBody.studioTitle = data.videoTitle;
+             requestBody.studioSubs = data.subs;
+          }
+        }
+      } catch { /* ignore JSON parse error */ }
+
       const res = await fetch("/api/script/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify(requestBody),
       });
       const data = await res.json();
       if (!res.ok || data.error) {

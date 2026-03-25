@@ -24,11 +24,11 @@ async function getApiKey(service: string, envVar: string): Promise<string | null
 }
 
 export async function POST(req: NextRequest) {
-  const { url } = await req.json();
+  const { url, studioTitle, studioSubs } = await req.json();
 
-  const videoId = extractVideoId(url);
-  if (!videoId) {
-    return NextResponse.json({ error: "유효하지 않은 YouTube URL입니다." }, { status: 400 });
+  const videoId = extractVideoId(url) || "";
+  if (!videoId && !(studioSubs && Array.isArray(studioSubs))) {
+    return NextResponse.json({ error: "유효하지 않은 YouTube URL이거나 대본 데이터가 없습니다." }, { status: 400 });
   }
 
   // API 키 로드
@@ -40,12 +40,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 1단계: YouTube 영상 메타데이터 ──────────────────────────────
-  let videoTitle = "";
+  let videoTitle = studioTitle || "";
   let videoDescription = "";
   let channelTitle = "";
   let duration = "";
 
-  if (youtubeKey) {
+  if (youtubeKey && videoId) {
     try {
       const metaRes = await fetch(
         `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${youtubeKey}`
@@ -61,21 +61,27 @@ export async function POST(req: NextRequest) {
     } catch { /* YouTube API 실패 시 자막만으로 진행 */ }
   }
 
-  // ── 2단계: 실제 YouTube 자막 추출 ──────────────────────────────
+  // ── 2단계: 실제 자막 추출 (스튜디오 데이터 우선) ─────────────────────────
   let transcriptText = "";
 
-  try {
-    const { YoutubeTranscript } = await import("youtube-transcript");
-    const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-    transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
-  } catch {
-    // 영어 자막 없으면 한국어 시도
+  if (studioSubs && Array.isArray(studioSubs)) {
+    // 스튜디오에서 전달받은 자막 사용
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transcriptText = studioSubs.map((t: any) => t.text).join(" ").slice(0, 10000);
+  } else if (videoId) {
     try {
       const { YoutubeTranscript } = await import("youtube-transcript");
-      const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "ko" });
+      const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
       transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
     } catch {
-      transcriptText = ""; // 자막 없음 — 제목/설명만으로 대본 생성
+      // 영어 자막 없으면 한국어 시도
+      try {
+        const { YoutubeTranscript } = await import("youtube-transcript");
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "ko" });
+        transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
+      } catch {
+        transcriptText = ""; // 자막 없음 — 제목/설명만으로 대본 생성
+      }
     }
   }
 
