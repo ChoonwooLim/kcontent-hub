@@ -24,7 +24,7 @@ async function getApiKey(service: string, envVar: string): Promise<string | null
 }
 
 export async function POST(req: NextRequest) {
-  const { url, studioTitle, studioSubs } = await req.json();
+  const { url, studioTitle, studioSubs, localDuration } = await req.json();
 
   const videoId = extractVideoId(url) || "";
   const isLocalFile = url.match(/\.(mp4|webm|mkv|mov)$/i) || url.includes("/api/downloads/");
@@ -140,18 +140,26 @@ export async function POST(req: NextRequest) {
     if (!m) return 0;
     return (parseInt(m[1]||"0")*3600) + (parseInt(m[2]||"0")*60) + parseInt(m[3]||"0");
   }
-  const durationSecs = parseDurationSecs(duration);
-  const midNarrationCount = Math.max(5, Math.floor(durationSecs / 90)); // 90초당 1개, 최소 5개
+  let durationSecs = parseDurationSecs(duration);
+  if (localDuration && !isNaN(localDuration)) {
+    durationSecs = Math.floor(localDuration);
+  }
+
+  const midNarrationCount = Math.max(durationSecs > 0 ? 2 : 5, Math.floor(durationSecs / 90)); 
   const durationLabel = durationSecs > 0
     ? `${Math.floor(durationSecs/60)}분 ${durationSecs%60}초`
     : "알 수 없음";
+
+  const durationLimitPrompt = durationSecs > 0 
+    ? `\n⚠ 🚨 중요: 전체 영상 길이는 ${durationLabel}입니다. 절대로 ${durationLabel}를 초과하는 타임스탬프를 생성하지 마세요! (초과 시 오류 발생)` 
+    : "";
 
   const userPrompt = `다음 외국인 영상을 프로 방송 작가의 시선으로 분석하여, 시청자가 열광할 퀄리티 높은 나레이션 대본을 작성하세요.
 
 ■ 파악한 영상 정보:
 - 제목: ${videoTitle || "정보 없음"}
 - 채널: ${channelTitle || "정보 없음"}
-- 총 분량: ${durationLabel}
+- 총 분량: ${durationLabel} ${durationLimitPrompt}
 ${videoDescription ? `- 설명: ${videoDescription}` : ""}
 ${hasTranscript ? `\n■ [핵심] 원본 자막 (이 내용을 바탕으로 스토리를 구성하세요):\n${transcriptText}` : "\n⚠ 자막 데이터 없음 — 제목과 설명을 기반으로 창의적이고 풍성한 대본을 상상해서 작성하세요."}
 

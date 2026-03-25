@@ -558,6 +558,25 @@ function ScriptPageInner() {
     try {
       const requestBody: Record<string, unknown> = { url: url.trim() };
       
+      // 로컬 파일의 경우, 미리 길이를 파악하여 AI가 너무 긴 대본을 짜지 못하도록 전달
+      const isLocalFile = url.trim().match(/\.(mp4|webm|mkv|mov)$/i) || url.trim().includes("/api/downloads/");
+      if (isLocalFile) {
+        try {
+          const v = document.createElement("video");
+          const bust = url.trim() + (url.trim().includes("?") ? "&" : "?") + "t=" + Date.now();
+          v.src = bust;
+          v.crossOrigin = "anonymous";
+          await new Promise<void>((resolve) => {
+            v.onloadedmetadata = () => resolve();
+            v.onerror = () => resolve();
+            setTimeout(resolve, 2000); // 타임아웃 2초
+          });
+          if (v.duration && !isNaN(v.duration) && v.duration > 0) {
+            requestBody.localDuration = v.duration;
+          }
+        } catch { /* 무시 */ }
+      }
+
       try {
         const s2s = sessionStorage.getItem("studio_to_script");
         if (s2s) {
