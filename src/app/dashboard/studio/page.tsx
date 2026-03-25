@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
   Palette, Sparkles, Check, Link2, Loader, AlertCircle,
-  Save, FolderOpen, Trash2, Clock
+  Save, FolderOpen, Trash2, Clock, Camera
 } from "lucide-react";
 
 /* ── 타입 ────────────────────────────────────────────────── */
@@ -140,6 +140,7 @@ export default function StudioPage() {
   const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
   const [subtitleMethod, setSubtitleMethod] = useState<string | null>(null); // "youtube_cc" | "whisper" | "whisper_fallback"
   const [subtitleMessage, setSubtitleMessage] = useState<string | null>(null);
+  const [capturedThumbnail, setCapturedThumbnail] = useState<string | null>(null);
 
   // 세션 저장/불러오기
   type SessionItem = {
@@ -382,7 +383,8 @@ export default function StudioPage() {
       videoId: videoId || "",
       fileVideoUrl: fileVideoUrl || "",
       videoTitle,
-      subs
+      subs,
+      capturedThumbnail
     }));
     const url = videoId
       ? `/dashboard/script?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`
@@ -862,17 +864,45 @@ export default function StudioPage() {
           </div>
 
           {/* 썸네일 미리보기 */}
-          {videoId && (
+          {(videoId || isFileMode) && (
             <div className="card" style={{ padding: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                썸네일
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  썸네일
+                </div>
+                {isFileMode && (
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, padding: "4px 8px" }}
+                    onClick={() => {
+                      if (!videoRef.current) return;
+                      const canvas = document.createElement("canvas");
+                      canvas.width = videoRef.current.videoWidth || 1280;
+                      canvas.height = videoRef.current.videoHeight || 720;
+                      const ctx = canvas.getContext("2d");
+                      if (ctx) {
+                        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+                        setCapturedThumbnail(canvas.toDataURL("image/jpeg", 0.8));
+                      }
+                    }}>
+                    <Camera size={13} style={{ marginRight: 4 }} /> 현재 화면 캡처
+                  </button>
+                )}
               </div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
-                alt="thumbnail"
-                style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }}
-              />
+              
+              {capturedThumbnail ? (
+                 // eslint-disable-next-line @next/next/no-img-element
+                 <img src={capturedThumbnail} alt="thumbnail" style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }} />
+              ) : videoId ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                  alt="thumbnail"
+                  style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }}
+                />
+              ) : (
+                <div style={{ width: "100%", aspectRatio: "16/9", background: "var(--bg-input)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                  우측 상단의 캡처 버튼을 눌러주세요
+                </div>
+              )}
             </div>
           )}
 
