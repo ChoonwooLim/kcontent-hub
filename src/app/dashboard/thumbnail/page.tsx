@@ -334,6 +334,9 @@ export default function ThumbnailStudioPage() {
             });
             setTimeout(() => setLayers(restoredLayers as Layer[]), 0);
           }
+          if (parsed.loadedTemplateId) {
+            setTimeout(() => setLoadedTemplateId(parsed.loadedTemplateId), 0);
+          }
         }
       } catch { }
     }
@@ -384,12 +387,13 @@ export default function ThumbnailStudioPage() {
         localStorage.setItem("thumbnail_studio_save", JSON.stringify({
           layers: _layers,
           bgColor,
-          bgImageSrc: bgImage ? bgImage.src : null
+          bgImageSrc: bgImage ? bgImage.src : null,
+          loadedTemplateId
         }));
       } catch { }
     }, 500); // 디바운스
     return () => clearTimeout(timer);
-  }, [layers, bgColor, bgImage]);
+  }, [layers, bgColor, bgImage, loadedTemplateId]);
 
   // 마우스 이벤트 헬퍼
   const getMousePos = (e: MouseEvent | React.MouseEvent) => {
@@ -599,6 +603,11 @@ export default function ThumbnailStudioPage() {
             })
           });
           if (res.ok) {
+             const data = await res.json();
+             if (options.isTemplateNew && data?.id) {
+               // 신규 추가 후 바로 덮어쓰기 기능이 활성화되도록 현재 아이디 유지
+               setLoadedTemplateId(data.id);
+             }
              if (options.isAssetOnly) alert("에셋 보관소에 성공적으로 저장되었습니다!");
              else alert("새 프리셋으로 갤러리에 완전히 저장되었습니다!");
              if ((window as any).__fetchCustomTemplates) (window as any).__fetchCustomTemplates();
