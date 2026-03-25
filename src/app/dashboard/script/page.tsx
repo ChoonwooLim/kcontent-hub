@@ -104,6 +104,7 @@ function SceneFrame({ frame }: { frame: FrameData }) {
 /* ── 전체화면 프레임 뷰어 모달 ───────────────────────────── */
 function FrameViewerModal({
   videoId,
+  videoUrl,
   frame,
   line,
   lineIndex,
@@ -111,6 +112,7 @@ function FrameViewerModal({
   onCapture,
 }: {
   videoId: string;
+  videoUrl?: string;
   frame: FrameData;
   line: ScriptLine;
   lineIndex: number;
@@ -126,16 +128,17 @@ function FrameViewerModal({
 
   // YouTube IFrame API 로드
   useEffect(() => {
+    if (!videoId) return;
     if (window.YT) { setYtReady(true); return; }
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
     window.onYouTubeIframeAPIReady = () => setYtReady(true);
-  }, []);
+  }, [videoId]);
 
   // 플레이어 생성 — 해당 시점에 정지 상태로 시작
   useEffect(() => {
-    if (!ytReady) return;
+    if (!videoId || !ytReady) return;
 
     const startSec = timeToSec(frame.time);
 
@@ -315,22 +318,38 @@ function FrameViewerModal({
           </div>
         </div>
 
-        {/* YouTube 플레이어 (정지 상태) */}
+        {/* 비디오 플레이어 (정지 상태) */}
         <div style={{
           width: "100%", aspectRatio: "16/9", borderRadius: 12, overflow: "hidden",
           background: "#000", border: "1px solid rgba(255,255,255,0.1)",
           position: "relative",
         }}>
-          <div id="modal-yt-player" style={{ width: "100%", height: "100%" }} />
-          {!playerLoaded && (
-            <div style={{
-              position: "absolute", inset: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              background: "rgba(0,0,0,0.8)",
-            }}>
-              <Loader size={24} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
-            </div>
-          )}
+          {videoId ? (
+            <>
+              <div id="modal-yt-player" style={{ width: "100%", height: "100%" }} />
+              {!playerLoaded && (
+                <div style={{
+                  position: "absolute", inset: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "rgba(0,0,0,0.8)",
+                }}>
+                  <Loader size={24} color="#818cf8" style={{ animation: "spin 1s linear infinite" }} />
+                </div>
+              )}
+            </>
+          ) : videoUrl ? (
+            <video
+              src={videoUrl + (videoUrl.includes("?") ? "&" : "?") + "t=" + Date.now()}
+              crossOrigin="anonymous"
+              controls
+              playsInline
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+              onLoadedMetadata={(e) => {
+                const target = e.currentTarget as HTMLVideoElement;
+                target.currentTime = timeToSec(frame.time);
+              }}
+            />
+          ) : null}
         </div>
 
         {/* 안내 */}
@@ -1093,6 +1112,7 @@ function ScriptPageInner() {
       {modalScene && result && (
         <FrameViewerModal
           videoId={result.videoId}
+          videoUrl={result.videoId ? undefined : url}
           frame={modalScene.frame}
           line={modalScene.line}
           lineIndex={modalScene.lineIndex}
