@@ -85,6 +85,13 @@ export default function AssetsLibraryPage() {
     (c.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
+  const groupedCaptures = filteredCaptures.reduce((acc, c) => {
+    const key = c.scriptTitle || "알 수 없는 영상";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(c);
+    return acc;
+  }, {} as Record<string, CapturedAsset[]>);
+
   const filteredVideos = videos.filter(v => 
     (v.videoTitle || "").toLowerCase().includes(search.toLowerCase()) ||
     (v.filename || "").toLowerCase().includes(search.toLowerCase())
@@ -140,49 +147,57 @@ export default function AssetsLibraryPage() {
         <>
           {/* 이미지 탭 */}
           {tab === "images" && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-              {filteredCaptures.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13, gridColumn: "1/-1" }}>검색 결과가 없습니다.</div>}
-              {filteredCaptures.map(asset => (
-                <div 
-                  key={`${asset.scriptId}_${asset.id}`} 
-                  className="card" 
-                  style={{ 
-                    position: "relative", overflow: "hidden", cursor: "pointer", 
-                    aspectRatio: "16/9", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)",
-                    transition: "transform 0.15s, box-shadow 0.15s"
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 12px 24px rgba(0,0,0,0.3)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"; }}
-                  onClick={() => setModalImage(asset)}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img 
-                    src={asset.dataUrl} 
-                    alt={asset.name} 
-                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                  
-                  {/* 그라디언트 및 정보 오버레이 */}
-                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 60%)", pointerEvents: "none" }} />
-                  <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", flexDirection: "column", gap: 6, pointerEvents: "none" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {asset.scriptTitle}
-                    </div>
-                    {(asset.time || asset.sceneType) && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600 }}>
-                        {asset.time && <span style={{ background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.9)", padding: "2px 6px", borderRadius: 4 }}>{asset.time}</span>}
-                        {asset.sceneType && <span style={{ color: "#a5b4fc" }}>{asset.sceneType}</span>}
-                      </div>
-                    )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+              {Object.keys(groupedCaptures).length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13 }}>검색 결과가 없습니다.</div>}
+              {Object.entries(groupedCaptures).map(([groupTitle, groupAssets]) => (
+                <div key={groupTitle}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <Film size={15} color="#818cf8" />
+                    {groupTitle}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", background: "rgba(255,255,255,0.08)", padding: "2px 8px", borderRadius: 12 }}>{groupAssets.length}장</span>
                   </div>
-                  
-                  {/* 호버 시 나타나는 돋보기 리플렉션 */}
-                  <div style={{
-                    position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.5)",
-                    padding: 6, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                    backdropFilter: "blur(4px)"
-                  }}>
-                    <Search size={14} color="rgba(255,255,255,0.8)" />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                    {groupAssets.map(asset => (
+                      <div 
+                        key={`${asset.scriptId}_${asset.id}`} 
+                        className="card" 
+                        style={{ 
+                          position: "relative", overflow: "hidden", cursor: "pointer", 
+                          aspectRatio: "16/9", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)",
+                          transition: "transform 0.15s, box-shadow 0.15s"
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 12px 24px rgba(0,0,0,0.3)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"; }}
+                        onClick={() => setModalImage(asset)}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={asset.dataUrl} 
+                          alt={asset.name} 
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        />
+                        
+                        {/* 그라디언트 및 정보 오버레이 */}
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 60%)", pointerEvents: "none" }} />
+                        <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", flexDirection: "column", gap: 6, pointerEvents: "none" }}>
+                          {(asset.time || asset.sceneType) && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600 }}>
+                              {asset.time && <span style={{ background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.9)", padding: "2px 6px", borderRadius: 4 }}>{asset.time}</span>}
+                              {asset.sceneType && <span style={{ color: "#a5b4fc" }}>{asset.sceneType}</span>}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* 호버 시 나타나는 돋보기 리플렉션 */}
+                        <div style={{
+                          position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.5)",
+                          padding: 6, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                          backdropFilter: "blur(4px)"
+                        }}>
+                          <Search size={14} color="rgba(255,255,255,0.8)" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

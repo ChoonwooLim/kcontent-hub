@@ -41,30 +41,42 @@ export async function GET() {
     // 자막 스튜디오에서 저장한 썸네일 (Base64) 로드
     const sessions = await prisma.studioSession.findMany({
       where: {
-        thumbnail: { startsWith: "data:image" }
+        OR: [
+          { thumbnail: { startsWith: "data:image" } },
+          { thumbnailsJson: { not: null } }
+        ]
       },
       select: {
         id: true,
         name: true,
         videoId: true,
         thumbnail: true,
+        thumbnailsJson: true,
         updatedAt: true,
       }
     });
 
     for (const s of sessions) {
-      if (!s.thumbnail) continue;
-      captures.push({
-        scriptId: `studio_${s.id}`,
-        scriptTitle: s.name ? `[스튜디오] ${s.name}` : "[스튜디오] 원본 영상",
-        videoId: s.videoId || "",
-        id: `studio_cap_${s.id}`,
-        name: `studio_thumbnail_${s.id}`,
-        dataUrl: s.thumbnail,
-        time: "커버 이미지",
-        sceneType: "스튜디오",
-        sceneText: "자막스튜디오에서 지정한 썸네일 이미지입니다.",
-        capturedAt: new Date(s.updatedAt).getTime(),
+      let thumbs: string[] = [];
+      if (s.thumbnailsJson && s.thumbnailsJson !== "null" && s.thumbnailsJson !== "[]") {
+         try { thumbs = JSON.parse(s.thumbnailsJson); } catch {}
+      } else if (s.thumbnail?.startsWith("data:image")) {
+         thumbs = [s.thumbnail];
+      }
+
+      thumbs.forEach((thumb, idx) => {
+        captures.push({
+          scriptId: `studio_${s.id}`,
+          scriptTitle: s.name ? `[스튜디오] ${s.name}` : "[스튜디오] 원본 영상",
+          videoId: s.videoId || "",
+          id: `studio_cap_${s.id}_${idx}`,
+          name: `studio_thumbnail_${s.id}_${idx}`,
+          dataUrl: thumb,
+          time: "스튜디오 캡처",
+          sceneType: "스튜디오",
+          sceneText: idx === 0 ? "자막스튜디오 커버 이미지입니다." : "자막스튜디오 추가 캡처 이미지입니다.",
+          capturedAt: new Date(s.updatedAt).getTime() - idx, // 순서 정렬
+        });
       });
     }
 
