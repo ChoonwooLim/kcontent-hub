@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
-  serverExternalPackages: ["youtube-transcript", "yt-dlp-wrap"],
+  serverExternalPackages: ["yt-dlp-wrap"],
   experimental: {
     serverActions: {
       bodySizeLimit: "50mb",

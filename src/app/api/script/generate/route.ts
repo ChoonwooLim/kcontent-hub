@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { YoutubeTranscript } from "youtube-transcript";
+
 import { prisma } from "@/lib/prisma";
 
 function extractVideoId(url: string): string | null {
@@ -65,12 +65,13 @@ export async function POST(req: NextRequest) {
   let transcriptText = "";
 
   try {
-    // 영어 자막 우선, 없으면 자동생성 자막
+    const { YoutubeTranscript } = await import("youtube-transcript");
     const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
     transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
   } catch {
     // 영어 자막 없으면 한국어 시도
     try {
+      const { YoutubeTranscript } = await import("youtube-transcript");
       const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "ko" });
       transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
     } catch {
