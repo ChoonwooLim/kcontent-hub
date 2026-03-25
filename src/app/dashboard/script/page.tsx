@@ -107,7 +107,6 @@ function FrameViewerModal({
   frame,
   line,
   lineIndex,
-  videoTitle,
   onClose,
   onCapture,
 }: {
@@ -115,7 +114,6 @@ function FrameViewerModal({
   frame: FrameData;
   line: ScriptLine;
   lineIndex: number;
-  videoTitle: string;
   onClose: () => void;
   onCapture: (cap: CapturedImage) => void;
 }) {
@@ -571,12 +569,76 @@ function ScriptPageInner() {
 
       if (data.videoId && data.script?.length) {
         loadFrames(data.videoId, data.script);
+      } else if (!data.videoId && data.script?.length && url.trim()) {
+        // 로컬 비디오인 경우, 클라이언트단에서 캔버스를 통해 각 타임스탬프 캡처 진행
+        extractLocalFrames(url.trim(), data.script);
       }
     } catch (e) {
       setError(`네트워크 오류: ${String(e)}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const extractLocalFrames = async (videoUrl: string, script: ScriptLine[]) => {
+    setLoadingFrames(true);
+    try {
+      const video = document.createElement("video");
+      video.src = videoUrl;
+      video.crossOrigin = "anonymous";
+      video.muted = true;
+      video.playsInline = true;
+
+      await new Promise<void>((resolve) => {
+        video.onloadeddata = () => resolve();
+        video.onerror = () => resolve(); 
+      });
+
+      if (!video.videoWidth) return;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = Math.round(320 * (video.videoHeight / video.videoWidth));
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+
+      const frameMap: Record<string, FrameData> = {};
+
+      for (const line of script) {
+        if (!line.time || !line.time.includes(":")) continue; 
+        
+        let sec = 0;
+        const parts = line.time.split(":").map(Number);
+        if (parts.length === 3) sec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        else if (parts.length === 2) sec = parts[0] * 60 + parts[1];
+        if (isNaN(sec)) continue;
+
+        video.currentTime = sec;
+        await new Promise<void>((resolve) => {
+          const onSeeked = () => { video.removeEventListener("seeked", onSeeked); resolve(); };
+          video.addEventListener("seeked", onSeeked);
+          // 실패나 타임아웃 발생 대비
+          setTimeout(() => { video.removeEventListener("seeked", onSeeked); resolve(); }, 1500); 
+        });
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+
+        frameMap[line.time] = {
+          time: line.time,
+          imageUrl: dataUrl,
+          type: "storyboard",
+          bgX: 0,
+          bgY: 0,
+          frameW: canvas.width,
+          frameH: canvas.height,
+          sheetW: canvas.width,
+          sheetH: canvas.height,
+        };
+      }
+      setFrames(frameMap);
+    } catch { /* 프레임 캡처 실패 무시 */ }
+    finally { setLoadingFrames(false); }
   };
 
   const loadFrames = async (videoId: string, script: ScriptLine[]) => {
@@ -981,7 +1043,6 @@ function ScriptPageInner() {
           frame={modalScene.frame}
           line={modalScene.line}
           lineIndex={modalScene.lineIndex}
-          videoTitle={result.title || result.videoTitle}
           onClose={() => setModalScene(null)}
           onCapture={handleCapture}
         />
