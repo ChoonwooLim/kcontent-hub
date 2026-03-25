@@ -27,8 +27,10 @@ export async function POST(req: NextRequest) {
   const { url, studioTitle, studioSubs } = await req.json();
 
   const videoId = extractVideoId(url) || "";
-  if (!videoId && !(studioSubs && Array.isArray(studioSubs))) {
-    return NextResponse.json({ error: "유효하지 않은 YouTube URL이거나 대본 데이터가 없습니다." }, { status: 400 });
+  const isLocalFile = url.match(/\.(mp4|webm|mkv|mov)$/i) || url.includes("/api/downloads/");
+
+  if (!videoId && !isLocalFile && !(studioSubs && Array.isArray(studioSubs))) {
+    return NextResponse.json({ error: "유효하지 않은 YouTube URL이거나 대본 데이터가 없습니다. (URL: " + url + ")" }, { status: 400 });
   }
 
   // API 키 로드
@@ -44,6 +46,15 @@ export async function POST(req: NextRequest) {
   let videoDescription = "";
   let channelTitle = "";
   let duration = "";
+
+  // 로컬 파일의 경우 파일명 자체를 임시 타이틀로 사용
+  if (!videoTitle && isLocalFile) {
+    try {
+      videoTitle = decodeURIComponent(url.split("/").pop() || "로컬 영상 대본").replace(/\.[^/.]+$/, "");
+    } catch {
+      videoTitle = "로컬 영상 대본";
+    }
+  }
 
   if (youtubeKey && videoId) {
     try {
@@ -87,7 +98,7 @@ export async function POST(req: NextRequest) {
 
   if (!videoTitle && !transcriptText) {
     return NextResponse.json({
-      error: "영상 정보를 가져올 수 없습니다. YouTube API 키를 확인하거나, 자막이 있는 영상을 사용해주세요."
+      error: "상세 영상 정보를 가져올 수 없습니다. 원본 URL을 확인하시거나 자막 스튜디오를 거쳐서 자막을 함께 추출해 주세요."
     }, { status: 400 });
   }
 
