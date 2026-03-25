@@ -1,18 +1,227 @@
 import { NextRequest, NextResponse } from "next/server";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync } from "fs";
+import { spawn, execSync } from "child_process";
 import path from "path";
 
 export const runtime = "nodejs";
-export const maxDuration = 120; // Whisper API는 시간이 걸릴 수 있음
+export const maxDuration = 300; // yt-dlp + Whisper API는 시간이 걸릴 수 있음
 
 const TMP_DIR = path.join(process.cwd(), "media", "downloads");
 const SAVED_DIR = path.join(TMP_DIR, "saved");
+const isWindows = process.platform === "win32";
+
+/* ── 바이너리 경로 자동 탐색 (download route와 동일 로직) ── */
+function findBinary(name: string): string {
+  try {
+    const cmd = isWindows ? `where ${name}` : `which ${name}`;
+    const result = execSync(cmd, { stdio: "pipe", timeout: 5000 }).toString().trim().split("\n")[0].trim();
+    if (result && existsSync(result)) return result;
+  } catch {}
+
+  if (isWindows) {
+    const username = process.env.USERNAME || process.env.USER || "choon";
+    const searchBases = [
+      `C:\\Users\\${username}\\AppData\\Local\\Microsoft\\WinGet\\Packages`,
+      `C:\\Users\\${username}\\AppData\\Local\\Programs\\Python`,
+    ];
+    for (const base of searchBases) {
+      if (!existsSync(base)) continue;
+      const found = findFileRecursive(base, `${name}.exe`, 5);
+      if (found) return found;
+    }
+  }
+  throw new Error(`${name}를 찾을 수 없습니다. 설치 후 PATH에 추가하세요.`);
+}
+
+function findFileRecursive(dir: string, name: string, depth: number): string | null {
+  if (depth <= 0) return null;
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.toLowerCase() === name.toLowerCase()) {
+        return path.join(dir, entry.name);
+      }
+      if (entry.isDirectory()) {
+        const found = findFileRecursive(path.join(dir, entry.name), name, depth - 1);
+        if (found) return found;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * yt-dlp로 YouTube 영상의 오디오만 다운로드 (Whisper용)
+ * - 오디오 전용: 빠르고 용량 작음
+ * - 최대 25MB (Whisper API 제한)
+ */
+async function downloadAudioForWhisper(ytVideoId: string): Promise<string> {
+  if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
+
+  const ytdlp = findBinary("yt-dlp");
+  const ytUrl = `https://www.youtube.com/watch?v=${ytVideoId}`;
+  const audioPath = path.join(TMP_DIR, `whisper_${ytVideoId}_${Date.now()}.m4a`);
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(ytdlp, [
+      "-f", "bestaudio[ext=m4a]/bestaudio",
+      "--no-check-certificates",
+      "-o", audioPath,
+      ytUrl,
+    ]);
+
+    let stderrBuf = "";
+    proc.stderr.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`yt-dlp 오디오 다운로드 실패 (코드:${code}): ${stderrBuf.slice(-200)}`));
+    });
+    proc.on("error", reject);
+    // 3분 타임아웃 (오디오는 빠름)
+    setTimeout(() => { proc.kill(); reject(new Error("오디오 다운로드 시간 초과 (3분)")); }, 180000);
+  });
+
+  if (!existsSync(audioPath)) {
+    throw new Error("오디오 파일 다운로드 실패");
+  }
+
+  return audioPath;
+}
+
+/**
+ * ffmpeg로 영상 파일에서 오디오만 추출 (Whisper 25MB 제한 대응)
+ * - m4a 포맷, 모노, 16kHz (Whisper 최적)
+ * - 원본 200~500MB → 오디오 5~15MB
+ */
+async function extractAudioWithFFmpeg(videoPath: string): Promise<string> {
+  const ffmpeg = findBinary("ffmpeg");
+  const audioPath = path.join(TMP_DIR, `whisper_audio_${Date.now()}.m4a`);
+
+  if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(ffmpeg, [
+      "-y",
+      "-i", videoPath,
+      "-vn",                    // 비디오 제거
+      "-acodec", "aac",         // AAC 코덱
+      "-ar", "16000",           // 16kHz (Whisper 최적 샘플레이트)
+      "-ac", "1",               // 모노
+      "-b:a", "64k",            // 64kbps (8분 ≈ 3.8MB)
+      "-movflags", "+faststart",
+      audioPath,
+    ]);
+
+    let stderrBuf = "";
+    proc.stderr.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg 오디오 추출 실패 (코드:${code}): ${stderrBuf.slice(-200)}`));
+    });
+    proc.on("error", reject);
+    // 2분 타임아웃
+    setTimeout(() => { proc.kill(); reject(new Error("오디오 추출 시간 초과 (2분)")); }, 120000);
+  });
+
+  if (!existsSync(audioPath)) {
+    throw new Error("오디오 추출 파일이 생성되지 않았습니다.");
+  }
+
+  return audioPath;
+}
+
+/**
+ * Whisper API로 오디오 파일 음성 분석
+ * - 25MB 파일 크기 제한 (Whisper API 제한)
+ * - 4분 타임아웃
+ */
+async function whisperTranscribe(
+  filePath: string,
+  openaiKey: string,
+  mimeType = "audio/mp4"
+): Promise<{
+  subs: { id: number; start: number; end: number; text: string; type: string }[];
+  language: string;
+}> {
+  const fileBuffer = readFileSync(filePath);
+  const filename = path.basename(filePath);
+
+  // 25MB 제한 체크
+  const MAX_SIZE = 25 * 1024 * 1024;
+  if (fileBuffer.length > MAX_SIZE) {
+    throw new Error(`파일 크기(${Math.round(fileBuffer.length / 1024 / 1024)}MB)가 Whisper API 제한(25MB)을 초과합니다.`);
+  }
+
+  const fileBlob = new Blob([fileBuffer], { type: mimeType });
+
+  const formData = new FormData();
+  formData.append("file", fileBlob, filename);
+  formData.append("model", "whisper-1");
+  formData.append("response_format", "verbose_json");
+  formData.append("timestamp_granularities[]", "segment");
+
+  // 4분 타임아웃
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 240000);
+
+  let whisperRes: Response;
+  try {
+    whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${openaiKey}` },
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (fetchErr) {
+    clearTimeout(timeout);
+    if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+      throw new Error("Whisper API 요청 시간 초과 (4분). 파일이 너무 크거나 서버가 응답하지 않습니다.");
+    }
+    throw fetchErr;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!whisperRes.ok) {
+    const errText = await whisperRes.text().catch(() => "");
+    let errMsg = errText;
+    try { errMsg = JSON.stringify(JSON.parse(errText)); } catch { /* keep as text */ }
+    throw new Error(`Whisper API 오류 (${whisperRes.status}): ${errMsg.slice(0, 300)}`);
+  }
+
+  const whisperData = await whisperRes.json() as {
+    segments?: { id: number; start: number; end: number; text: string }[];
+    text?: string;
+    language?: string;
+  };
+
+  if (!whisperData.segments || whisperData.segments.length === 0) {
+    return {
+      language: whisperData.language || "unknown",
+      subs: [{
+        id: 1, start: 0, end: 30,
+        text: whisperData.text || "(음성이 감지되지 않았습니다)",
+        type: "narration",
+      }],
+    };
+  }
+
+  return {
+    language: whisperData.language || "unknown",
+    subs: whisperData.segments.map((seg, i) => ({
+      id: i + 1,
+      start: Math.round(seg.start * 10) / 10,
+      end: Math.round(seg.end * 10) / 10,
+      text: seg.text.trim(),
+      type: "narration",
+    })),
+  };
+}
 
 /**
  * POST /api/studio/subtitle
  * body: { action: "extract" | "translate", videoId?, fileVideoUrl?, subs? }
  *
- * extract: Whisper API 음성 분석 (파일 모드) 또는 YouTube CC 추출
+ * extract: YouTube CC 자막 → 실패 시 yt-dlp 오디오 + Whisper 음성 분석
  * translate: 자막을 한국어로 번역 (GPT-4o)
  */
 export async function POST(req: NextRequest) {
@@ -20,16 +229,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action } = body;
 
-    // ── 1. 자막 추출 (Whisper + YouTube CC fallback) ──
+    // ── 1. 자막 추출 (스마트 모드: CC → Whisper 자동 폴백) ──
     if (action === "extract") {
       const { videoId, fileVideoUrl } = body;
       const openaiKey = process.env.OPENAI_API_KEY;
 
-      // ── A. 파일 모드: Whisper API로 음성 분석 ──
+      // ── A. 파일 모드: ffmpeg 오디오 추출 → Whisper API 음성 분석 ──
       if (fileVideoUrl) {
         if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다." }, { status: 500 });
 
-        // 파일 경로 해석 (/api/downloads/파일명 → 서버 파일 경로)
         const filename = decodeURIComponent(fileVideoUrl.split("/").pop() || "");
         let filepath = path.join(SAVED_DIR, filename);
         if (!existsSync(filepath)) {
@@ -40,92 +248,97 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: `영상 파일을 찾을 수 없습니다: ${filename}` }, { status: 404 });
         }
 
-        // 파일 읽기 → FormData로 Whisper API 호출
-        const fileBuffer = readFileSync(filepath);
-        const fileBlob = new Blob([fileBuffer], { type: "video/mp4" });
+        // ffmpeg로 오디오만 추출 (HD 영상 200~500MB → 오디오 3~15MB)
+        let audioPath: string | null = null;
+        try {
+          audioPath = await extractAudioWithFFmpeg(filepath);
+          const result = await whisperTranscribe(audioPath, openaiKey, "audio/mp4");
 
-        const formData = new FormData();
-        formData.append("file", fileBlob, filename);
-        formData.append("model", "whisper-1");
-        formData.append("response_format", "verbose_json");
-        formData.append("timestamp_granularities[]", "segment");
-
-        const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${openaiKey}`,
-          },
-          body: formData,
-        });
-
-        if (!whisperRes.ok) {
-          const errData = await whisperRes.json().catch(() => ({}));
-          return NextResponse.json({
-            error: `Whisper API 오류 (${whisperRes.status}): ${JSON.stringify(errData).slice(0, 300)}`,
-          }, { status: whisperRes.status });
-        }
-
-        const whisperData = await whisperRes.json() as {
-          segments?: { id: number; start: number; end: number; text: string }[];
-          text?: string;
-          language?: string;
-        };
-
-        if (!whisperData.segments || whisperData.segments.length === 0) {
-          // segment가 없으면 전체 텍스트를 하나의 자막으로
           return NextResponse.json({
             success: true,
-            language: whisperData.language || "unknown",
-            subs: [{
-              id: 1,
-              start: 0,
-              end: 30,
-              text: whisperData.text || "(음성이 감지되지 않았습니다)",
-              type: "narration",
-            }],
+            method: "whisper",
+            language: result.language,
+            segmentCount: result.subs.length,
+            subs: result.subs,
+            message: `🎤 Whisper 음성 분석 완료 — ${result.subs.length}개 자막 추출 (언어: ${result.language})`,
           });
+        } catch (err) {
+          return NextResponse.json({
+            error: `음성 분석 실패: ${String(err).slice(0, 300)}`,
+          }, { status: 422 });
+        } finally {
+          // 임시 오디오 파일 정리
+          if (audioPath && existsSync(audioPath)) {
+            try { unlinkSync(audioPath); } catch {}
+          }
         }
-
-        const subs = whisperData.segments.map((seg, i) => ({
-          id: i + 1,
-          start: Math.round(seg.start * 10) / 10,
-          end: Math.round(seg.end * 10) / 10,
-          text: seg.text.trim(),
-          type: "narration",
-        }));
-
-        return NextResponse.json({
-          success: true,
-          language: whisperData.language || "unknown",
-          segmentCount: subs.length,
-          subs,
-          message: `Whisper 음성 분석 완료 — ${subs.length}개 자막 추출 (언어: ${whisperData.language || "unknown"})`,
-        });
       }
 
-      // ── B. YouTube CC 자막 추출 (원본 영상 URL로 접근 시) ──
+      // ── B. YouTube 영상: CC 자막 → 실패 시 Whisper 폴백 ──
       if (videoId) {
+        // Step 1: YouTube CC 자막 시도
         try {
           const { YoutubeTranscript } = await import("youtube-transcript");
           const raw = await YoutubeTranscript.fetchTranscript(videoId);
 
-          const transcript = raw.map((seg: { offset: number; duration: number; text: string }, i: number) => {
-            const startSec = Math.round((seg.offset / 1000) * 10) / 10;
-            const endSec = Math.round((startSec + seg.duration / 1000) * 10) / 10;
-            return {
-              id: i + 1,
-              start: startSec,
-              end: endSec,
-              text: seg.text,
-              type: "narration",
-            };
-          });
+          if (raw && raw.length > 0) {
+            const transcript = raw.map((seg: { offset: number; duration: number; text: string }, i: number) => {
+              const startSec = Math.round((seg.offset / 1000) * 10) / 10;
+              const endSec = Math.round((startSec + seg.duration / 1000) * 10) / 10;
+              return {
+                id: i + 1,
+                start: startSec,
+                end: endSec,
+                text: seg.text,
+                type: "narration",
+              };
+            });
 
-          return NextResponse.json({ success: true, subs: transcript });
+            return NextResponse.json({
+              success: true,
+              method: "youtube_cc",
+              segmentCount: transcript.length,
+              subs: transcript,
+              message: `📝 YouTube CC 자막 추출 완료 — ${transcript.length}개 자막`,
+            });
+          }
         } catch {
+          // CC 자막 없음 → Whisper 폴백으로 진행
+        }
+
+        // Step 2: Whisper 폴백 — yt-dlp로 오디오 다운로드 후 음성 분석
+        if (!openaiKey) {
           return NextResponse.json({
-            error: "YouTube CC 자막 추출 실패 — 이 영상에는 자막이 없습니다.",
+            error: "YouTube CC 자막이 없습니다. Whisper 음성 분석을 위해 OpenAI API 키가 필요합니다.",
+          }, { status: 500 });
+        }
+
+        let audioPath: string | null = null;
+        try {
+          // 오디오 다운로드
+          audioPath = await downloadAudioForWhisper(videoId);
+
+          // Whisper 음성 분석
+          const result = await whisperTranscribe(audioPath, openaiKey, "audio/mp4");
+
+          return NextResponse.json({
+            success: true,
+            method: "whisper_fallback",
+            language: result.language,
+            segmentCount: result.subs.length,
+            subs: result.subs,
+            message: `🎤 YouTube CC 자막 없음 → Whisper 음성 분석으로 ${result.subs.length}개 자막 추출 완료 (언어: ${result.language})`,
+          });
+        } catch (whisperErr) {
+          return NextResponse.json({
+            error: `YouTube CC 자막 없음 & Whisper 음성 분석 실패: ${String(whisperErr).slice(0, 300)}`,
+            suggestion: "영상의 오디오를 추출할 수 없거나, OpenAI API 한도를 초과했을 수 있습니다.",
           }, { status: 422 });
+        } finally {
+          // 임시 오디오 파일 정리
+          if (audioPath && existsSync(audioPath)) {
+            try { unlinkSync(audioPath); } catch {}
+          }
         }
       }
 

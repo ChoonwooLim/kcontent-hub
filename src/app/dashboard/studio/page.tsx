@@ -136,6 +136,8 @@ export default function StudioPage() {
   const [subtitleLoading, setSubtitleLoading] = useState<string | null>(null);
   const [subtitleError, setSubtitleError] = useState<string | null>(null);
   const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
+  const [subtitleMethod, setSubtitleMethod] = useState<string | null>(null); // "youtube_cc" | "whisper" | "whisper_fallback"
+  const [subtitleMessage, setSubtitleMessage] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);  // HTML5 video 플레이어
   const isFileMode = !!fileVideoUrl && !videoId;  // 파일 모드 여부
@@ -156,6 +158,8 @@ export default function StudioPage() {
         setSubtitleStep(null);
         setSubtitleError(null);
         setSubtitleLoading(null);
+        setSubtitleMethod(null);
+        setSubtitleMessage(null);
         setSelectedSub(null);
         setCurrentTime(0);
         setPlaying(false);
@@ -676,7 +680,7 @@ export default function StudioPage() {
                 자막 워크플로우
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {/* ① 자막 추출 */}
+                {/* ① 자막 추출 (스마트 모드: CC → Whisper 자동 폴백) */}
                 <button
                   className="btn btn-brand btn-sm"
                   style={{ gap: 6, justifyContent: "flex-start" }}
@@ -684,27 +688,45 @@ export default function StudioPage() {
                   onClick={async () => {
                     setSubtitleLoading("extract");
                     setSubtitleError(null);
+                    setSubtitleMethod(null);
+                    setSubtitleMessage(null);
                     try {
                       const res = await fetch("/api/studio/subtitle", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "extract", videoId: videoId || "", fileVideoUrl: fileVideoUrl || "" }),
                       });
-                      const data = await res.json();
-                      if (!res.ok) { setSubtitleError(data.error); return; }
+                      const ct = res.headers.get("content-type") || "";
+                      if (!ct.includes("application/json")) {
+                        setSubtitleError(`서버 오류 (${res.status}): JSON이 아닌 응답이 반환되었습니다. 서버 상태를 확인하세요.`);
+                        return;
+                      }
+                      let data;
+                      try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
+                      if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
                       setSubs(data.subs);
                       setSubtitleStep("extracted");
+                      setSubtitleMethod(data.method || null);
+                      setSubtitleMessage(data.message || null);
                     } catch (e) { setSubtitleError(String(e)); }
                     finally { setSubtitleLoading(null); }
                   }}
                 >
                   {subtitleLoading === "extract"
-                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{isFileMode ? "Whisper 음성 분석 중..." : "자막 추출 중..."}</>
-                    : <><Download size={12} />{isFileMode ? "① 음성 분석 자막 추출 (Whisper AI)" : "① 자막 추출 (YouTube CC)"}</>
+                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{isFileMode ? "Whisper 음성 분석 중..." : "자막 추출 중 (CC → Whisper 자동 전환)..."}</>
+                    : <><Download size={12} />{isFileMode ? "① 음성 분석 자막 추출 (Whisper AI)" : "① 자막 추출 (CC 우선 → Whisper 폴백)"}</>
                   }
                 </button>
                 {subtitleStep && (
-                  <div style={{ fontSize: 10, color: "#34d399", marginLeft: 4 }}>✓ {subs.length}개 자막 추출됨</div>
+                  <div style={{ fontSize: 10, marginLeft: 4, padding: "4px 8px", borderRadius: 4,
+                    color: subtitleMethod === "youtube_cc" ? "#34d399" : "#818cf8",
+                    background: subtitleMethod === "youtube_cc" ? "rgba(52,211,153,0.06)" : "rgba(129,140,248,0.06)",
+                  }}>
+                    {subtitleMethod === "youtube_cc" && "📝"}
+                    {subtitleMethod === "whisper" && "🎤"}
+                    {subtitleMethod === "whisper_fallback" && "🎤"}
+                    {" "}{subtitleMessage || `${subs.length}개 자막 추출됨`}
+                  </div>
                 )}
 
                 {/* ② 한국어 번역 */}
@@ -725,8 +747,14 @@ export default function StudioPage() {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "translate", subs }),
                       });
-                      const data = await res.json();
-                      if (!res.ok) { setSubtitleError(data.error); return; }
+                      const ct = res.headers.get("content-type") || "";
+                      if (!ct.includes("application/json")) {
+                        setSubtitleError(`서버 오류 (${res.status}): 번역 API 응답 오류. 서버 상태를 확인하세요.`);
+                        return;
+                      }
+                      let data;
+                      try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
+                      if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
                       setSubs(data.subs);
                       setSubtitleStep("translated");
                     } catch (e) { setSubtitleError(String(e)); }
