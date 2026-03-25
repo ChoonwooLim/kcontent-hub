@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
-  Palette, Send, Check, Link2, Loader, AlertCircle,
+  Palette, Sparkles, Check, Link2, Loader, AlertCircle,
   Save, FolderOpen, Trash2, Clock
 } from "lucide-react";
 
@@ -988,11 +988,11 @@ export default function StudioPage() {
             </div>
           </div>
 
-          {/* 배포 전달 */}
-          <a href="/dashboard/publisher" style={{ textDecoration: "none" }}>
+          {/* AI 대본엔진 전달 */}
+          <a href={videoId ? `/dashboard/script?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}` : "/dashboard/script"} style={{ textDecoration: "none" }}>
             <button className="btn btn-brand" onClick={handleSendPublisher}
               style={{ width: "100%", padding: "12px", fontSize: 14, gap: 8 }}>
-              {exported ? <><Check size={15} />배포 패널로 전송됨!</> : <><Send size={15} />배포 패널로 보내기</>}
+              {exported ? <><Check size={15} />AI 대본엔진으로 전송됨!</> : <><Sparkles size={15} />AI 대본엔진으로 보내기</>}
             </button>
           </a>
         </div>
