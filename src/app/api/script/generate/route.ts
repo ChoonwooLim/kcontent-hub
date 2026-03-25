@@ -72,24 +72,32 @@ export async function POST(req: NextRequest) {
     } catch { /* YouTube API 실패 시 자막만으로 진행 */ }
   }
 
-  // ── 2단계: 실제 자막 추출 (스튜디오 데이터 우선) ─────────────────────────
+  // ── 2단계: 실제 자막 및 타임스탬프 추출 (스튜디오 데이터 우선) ─────────────────────────
   let transcriptText = "";
 
+  function fmtT(sec: number) {
+    if (!sec || isNaN(sec)) return "00:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+
   if (studioSubs && Array.isArray(studioSubs)) {
-    // 스튜디오에서 전달받은 자막 사용
+    // 스튜디오에서 전달받은 자막 (정확한 start time 포함)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    transcriptText = studioSubs.map((t: any) => t.text).join(" ").slice(0, 10000);
+    transcriptText = studioSubs.map((t: any) => `[${fmtT(t.start)}] ${t.text}`).join("\n").slice(0, 10000);
   } else if (videoId) {
     try {
       const { YoutubeTranscript } = await import("youtube-transcript");
       const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-      transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
+      // youtube-transcript offset은 보통 밀리초(ms) 또는 초 단위. (일반적으로 초 단위가 많음)
+      transcriptText = transcript.map(t => `[${fmtT(t.offset / (t.offset > 10000 ? 1000 : 1))}] ${t.text}`).join("\n").slice(0, 10000);
     } catch {
       // 영어 자막 없으면 한국어 시도
       try {
         const { YoutubeTranscript } = await import("youtube-transcript");
         const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "ko" });
-        transcriptText = transcript.map(t => t.text).join(" ").slice(0, 10000);
+        transcriptText = transcript.map(t => `[${fmtT(t.offset / (t.offset > 10000 ? 1000 : 1))}] ${t.text}`).join("\n").slice(0, 10000);
       } catch {
         transcriptText = ""; // 자막 없음 — 제목/설명만으로 대본 생성
       }
