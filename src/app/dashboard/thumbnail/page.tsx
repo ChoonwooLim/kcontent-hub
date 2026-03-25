@@ -191,7 +191,8 @@ export default function ThumbnailStudioPage() {
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [customTemplates, setCustomTemplates] = useState<{ name: string, layers: Partial<TextLayer>[] }[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<{ id?: string, name: string, image?: string, layers: Partial<TextLayer>[] }[]>([]);
+  const [loadedTemplateId, setLoadedTemplateId] = useState<string | null>(null);
 
   // 캔버스 및 렌더링
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -338,21 +339,33 @@ export default function ThumbnailStudioPage() {
     }
 
     // 3. 내 작업 템플릿 로드 (비동기)
-    fetch("/api/thumbnails?workspaceId=test-workspace1")
-      .then(r => r.json())
-      .then(d => {
+    const fetchCustomTemplates = async () => {
+      try {
+        const r = await fetch("/api/thumbnails?workspaceId=test-workspace1");
+        const d = await r.json();
         if (d.success && d.thumbnails) {
           const temps = d.thumbnails
             .filter((t: Record<string, unknown>) => !!t.layersJson)
             .map((t: Record<string, unknown>) => {
-              try { return { name: "⭐️ " + ((t.title as string) || "내 작업물"), layers: JSON.parse(t.layersJson as string) }; }
+              try { 
+                return { 
+                  id: t.id as string,
+                  name: "⭐️ " + ((t.title as string) || "내 작업물"), 
+                  image: t.dataUrl as string,
+                  layers: JSON.parse(t.layersJson as string) 
+                }; 
+              }
               catch { return null; }
             })
             .filter(Boolean);
           setCustomTemplates(temps);
         }
-      })
-      .catch(() => {});
+      } catch {}
+    };
+    fetchCustomTemplates();
+    
+    // 외부에 fetchCustomTemplates를 두지 않고 전역 데이터 공유용 window 콜백 설정
+    (window as any).__fetchCustomTemplates = fetchCustomTemplates;
   }, []);
 
   // 상태 변경 시마다 로컬스토리지 백업 (오토세이브)
@@ -472,7 +485,7 @@ export default function ThumbnailStudioPage() {
     setSelectedId(id);
   };
 
-  const applyTemplate = (tpl: { name: string, layers: Partial<TextLayer>[] }) => {
+  const applyTemplate = (tpl: { id?: string, name: string, layers: Partial<TextLayer>[] }) => {
     if (layers.some(l => l.type === "text")) {
        if (!confirm("기존 텍스트 레이어들이 모두 지워지고 새로운 템플릿이 덮어씌워집니다.\n계속하시겠습니까? (배경은 유지됩니다)")) return;
     }
@@ -484,6 +497,7 @@ export default function ThumbnailStudioPage() {
     } as TextLayer));
     setLayers([...nonText, ...newTextLayers]);
     if (newTextLayers.length > 0) setSelectedId(newTextLayers[0].id);
+    setLoadedTemplateId(tpl.id || null);
   };
 
   const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -537,7 +551,7 @@ export default function ThumbnailStudioPage() {
     }, 50);
   };
 
-  const saveToAssets = async () => {
+  const saveToAssets = async (updateExisting: boolean = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -554,23 +568,39 @@ export default function ThumbnailStudioPage() {
       const layersJson = textLayers.length > 0 ? JSON.stringify(textLayers) : null;
       
       try {
-        const res = await fetch("/api/thumbnails", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: `내 보관함 템플릿_${new Date().toISOString().slice(0, 10)}`,
-            dataUrl,
-            layersJson,
-            workspaceId: "test-workspace1"
-          })
-        });
-        if (res.ok) {
-           if (textLayers.length > 0) {
-             setCustomTemplates(prev => [{ name: "⭐️ 방금 저장된 템플릿", layers: textLayers as Partial<TextLayer>[] }, ...prev]);
-           }
-           alert("에셋 보관소에 성공적으로 저장되었습니다!");
+        if (updateExisting && loadedTemplateId) {
+          const res = await fetch("/api/thumbnails", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: loadedTemplateId,
+              dataUrl,
+              layersJson,
+            })
+          });
+          if (res.ok) {
+             alert("템플릿이 성공적으로 해당 디자인으로 덮어씌워졌습니다!");
+             if ((window as any).__fetchCustomTemplates) (window as any).__fetchCustomTemplates();
+          } else {
+             alert("프리셋 덮어쓰기 실패");
+          }
         } else {
-           alert("저장 실패");
+          const res = await fetch("/api/thumbnails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: `내 보관함 템플릿_${new Date().toISOString().slice(0, 10)}`,
+              dataUrl,
+              layersJson,
+              workspaceId: "test-workspace1"
+            })
+          });
+          if (res.ok) {
+             alert("새 프리셋(에셋)으로 성공적으로 저장되었습니다!");
+             if ((window as any).__fetchCustomTemplates) (window as any).__fetchCustomTemplates();
+          } else {
+             alert("저장 실패");
+          }
         }
       } catch {
          alert("오류 발생");
@@ -673,8 +703,13 @@ export default function ThumbnailStudioPage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, flexShrink: 0 }}>
-          <button className="btn btn-ghost" style={{ height: 48, background: "rgba(255,255,255,0.05)" }} onClick={saveToAssets} disabled={isSaving}>
-            <Archive size={16} color="#34d399" /> {isSaving ? "저장 중..." : "에셋 보관소에 저장"}
+          {loadedTemplateId && (
+            <button className="btn btn-ghost" style={{ height: 48, background: "rgba(250, 204, 21, 0.15)", color: "#facc15", border: "1px solid rgba(250, 204, 21, 0.3)" }} onClick={() => saveToAssets(true)} disabled={isSaving}>
+              {isSaving ? "저장 중..." : "🔄 현재 프리셋 디자인으로 수정 (덮어쓰기)"}
+            </button>
+          )}
+          <button className="btn btn-ghost" style={{ height: 48, background: "rgba(255,255,255,0.05)" }} onClick={() => saveToAssets(false)} disabled={isSaving}>
+            <Archive size={16} color="#34d399" /> {isSaving ? "저장 중..." : "새 템플릿(에셋)으로 저장"}
           </button>
           <button className="btn btn-brand" style={{ height: 48 }} onClick={downloadThumbnail}>
             <Download size={16} /> 고화질 썸네일 다운로드
@@ -736,14 +771,17 @@ export default function ThumbnailStudioPage() {
                     transform: "scale(0.165)", transformOrigin: "top left",
                     pointerEvents: "none"
                  }}>
-                    {/* 가독성을 높이기 위한 다크 모던 더미 배경 */}
-                    <div style={{ 
-                      width: 1920, height: 1080, position: "absolute", inset: 0, 
-                      background: "url('https://images.unsplash.com/photo-1620121692029-d088224ddc74?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') center/cover", 
-                      opacity: 0.5 
-                    }} />
+                    {(tpl as any).image ? (
+                       <img src={(tpl as any).image} style={{ width: 1920, height: 1080, objectFit: "cover", position: "absolute", inset: 0 }} alt="preset preview" />
+                    ) : (
+                       <div style={{ 
+                         width: 1920, height: 1080, position: "absolute", inset: 0, 
+                         background: "url('https://images.unsplash.com/photo-1620121692029-d088224ddc74?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') center/cover", 
+                         opacity: 0.5 
+                       }} />
+                    )}
 
-                    {tpl.layers.map((l: Record<string, unknown>, li: number) => {
+                    {!(tpl as any).image && tpl.layers.map((l: Record<string, unknown>, li: number) => {
                        if (l.type === "text") {
                          const lines = ((l.text as string) || "").split("\n");
                          return (

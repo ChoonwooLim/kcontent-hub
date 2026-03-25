@@ -48,3 +48,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, title, dataUrl, layersJson } = body;
+
+    if (!id || !dataUrl) {
+      return NextResponse.json({ error: "No id or dataUrl" }, { status: 400 });
+    }
+
+    const updated = await prisma.thumbnailAsset.update({
+      where: { id },
+      data: {
+        title: title || undefined,
+        dataUrl,
+        layersJson,
+      }
+    });
+
+    return NextResponse.json({ success: true, id: updated.id }, { status: 200 });
+  } catch (error) {
+    console.error("Update Thumbnail Error:", error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+  }
+}
+
