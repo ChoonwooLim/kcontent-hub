@@ -420,7 +420,7 @@ export default function StudioPage() {
           step: subtitleStep,
           method: subtitleMethod,
           preset,
-          thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null,
+          thumbnail: capturedThumbnail || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null),
         }),
       });
       const data = await res.json();
