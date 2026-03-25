@@ -672,7 +672,7 @@ export default function ThumbnailStudioPage() {
           </label>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, flexShrink: 0 }}>
           <button className="btn btn-ghost" style={{ height: 48, background: "rgba(255,255,255,0.05)" }} onClick={saveToAssets} disabled={isSaving}>
             <Archive size={16} color="#34d399" /> {isSaving ? "저장 중..." : "에셋 보관소에 저장"}
           </button>
