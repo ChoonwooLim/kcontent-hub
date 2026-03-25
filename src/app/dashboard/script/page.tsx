@@ -53,10 +53,10 @@ type SavedScript = {
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  hook: "#f59e0b", reaction: "#6366f1", narration: "#10b981", commentary: "#ec4899",
+  opening: "#f472b6", hook: "#f59e0b", reaction: "#6366f1", narration: "#10b981", commentary: "#ec4899", closing: "#22d3ee",
 };
 const TYPE_LABEL: Record<string, string> = {
-  hook: "훅", reaction: "반응", narration: "나레이션", commentary: "해설",
+  opening: "오프닝", hook: "훅", reaction: "반응", narration: "나레이션", commentary: "해설", closing: "클로징",
 };
 
 /* ── YouTube IFrame Player 타입 ────────────────────────── */

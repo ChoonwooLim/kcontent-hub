@@ -88,14 +88,23 @@ export async function POST(req: NextRequest) {
   // ── 3단계: GPT-4o 한국어 대본 생성 ────────────────────────────
   const hasTranscript = transcriptText.length > 0;
 
-  const systemPrompt = `당신은 K-콘텐츠 전문 번역·재창작 PD입니다.
+  const systemPrompt = `당신은 "코릿치(Koritch)" 채널의 전속 K-콘텐츠 대본 PD입니다.
 해외 외국인이 한국을 방문하거나 한국 문화를 체험하는 YouTube 영상을 분석하여,
 한국 시청자를 위한 감성 자막 대본으로 재창작하는 전문가입니다.
+
+채널 브랜딩 규칙 (반드시 지킬 것):
+- 대본의 첫 번째 장면(00:00)은 반드시 "코릿치" 오프닝 인사말입니다
+  예시: "안녕하세요, 코릿치입니다! 오늘은 외국인이 한국에서 ○○한 이야기를 가져왔습니다"
+  변형: "코릿치에 오신 걸 환영합니다!", "여러분의 코릿치가 돌아왔습니다!" 등
+- 대본의 마지막 장면은 반드시 "코릿치" 클로징 인사말입니다
+  예시: "오늘도 코릿치와 함께해 주셔서 감사합니다! 구독과 좋아요 꾹~ 다음 영상에서 만나요!"
+  변형: "코릿치는 다음에 더 재밌는 영상으로 돌아올게요!", "코릿치였습니다, 안녕!" 등
+- 오프닝/클로징의 type은 "opening", "closing"으로 설정
 
 출력 규칙:
 - JSON 형식으로만 응답 (마크다운 코드블록 없이 순수 JSON)
 - 타임스탬프는 영상 자막 오프셋 기준으로 MM:SS 형식
-- 대본 유형: hook(훅/충격), reaction(외국인반응), narration(나레이션), commentary(해설)
+- 대본 유형: opening(오프닝), hook(훅/충격), reaction(외국인반응), narration(나레이션), commentary(해설), closing(클로징)
 - 한국 시청자 감성 최적화: 국뽕, 공감, 충격, 재미 포인트 강조`;
 
   // 영상 길이 기반 최소 장면 수 계산
@@ -110,7 +119,7 @@ export async function POST(req: NextRequest) {
     ? `${Math.floor(durationSecs/60)}분 ${durationSecs%60}초`
     : "알 수 없음";
 
-  const userPrompt = `다음 YouTube 영상 정보를 바탕으로 한국어 자막 대본을 생성하세요.
+  const userPrompt = `다음 YouTube 영상 정보를 바탕으로 "코릿치(Koritch)" 채널의 한국어 자막 대본을 생성하세요.
 
 영상 제목: ${videoTitle || "정보 없음"}
 채널명: ${channelTitle || "정보 없음"}
@@ -118,9 +127,12 @@ export async function POST(req: NextRequest) {
 ${videoDescription ? `영상 설명: ${videoDescription}` : ""}
 ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: 자막 없음 — 제목과 설명만으로 대본 창작"}
 
-[중요] 영상 전체를 균일하게 커버해야 합니다.
+[중요] 코릿치 채널 대본 구조:
+1. 첫 장면(00:00) = 코릿치 오프닝 인사말 (type: "opening")
+2. 본문 = 영상 내용 대본 (${minScenes}개 이상)
+3. 마지막 장면 = 코릿치 클로징 인사말 (type: "closing")
+
 - 영상 길이: ${durationLabel}
-- 최소 장면 수: ${minScenes}개 이상
 - 타임스탬프를 영상 시작(00:00)부터 끝까지 균등하게 배분하세요
 - 자막 원문이 있으면 실제 대사/장면을 반영하세요
 
@@ -130,10 +142,12 @@ ${hasTranscript ? `\n원본 자막 (영어):\n${transcriptText}` : "\n주의: �
   "thumbnailTop": "썸네일 상단 텍스트 (충격/호기심 유발, 15자 이내)",
   "thumbnailBottom": "썸네일 하단 임팩트 문구 (12자 이내, 따옴표 포함 가능)",
   "script": [
-    { "time": "00:00", "type": "hook",      "ko": "시청자를 사로잡는 첫 문장" },
-    { "time": "00:30", "type": "narration", "ko": "상황 설명" },
-    { "time": "01:00", "type": "reaction",  "ko": "외국인 반응 묘사" },
-    ...${minScenes}개 이상의 장면 (영상 끝까지 커버)
+    { "time": "00:00", "type": "opening",   "ko": "안녕하세요, 코릿치입니다! 오늘은..." },
+    { "time": "00:05", "type": "hook",       "ko": "시청자를 사로잡는 첫 문장" },
+    { "time": "00:30", "type": "narration",  "ko": "상황 설명" },
+    { "time": "01:00", "type": "reaction",   "ko": "외국인 반응 묘사" },
+    ...${minScenes}개 이상의 장면 (영상 끝까지 커버),
+    { "time": "마지막", "type": "closing", "ko": "오늘도 코릿치와 함께해 주셔서 감사합니다! 구독과 좋아요 꾹~" }
   ]
 }`;
 
