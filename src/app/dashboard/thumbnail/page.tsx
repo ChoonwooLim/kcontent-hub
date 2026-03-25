@@ -191,6 +191,7 @@ export default function ThumbnailStudioPage() {
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [customTemplates, setCustomTemplates] = useState<{ name: string, layers: Partial<TextLayer>[] }[]>([]);
 
   // 캔버스 및 렌더링
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -335,6 +336,23 @@ export default function ThumbnailStudioPage() {
         }
       } catch { }
     }
+
+    // 3. 내 작업 템플릿 로드 (비동기)
+    fetch("/api/thumbnails?workspaceId=test-workspace1")
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.thumbnails) {
+          const temps = d.thumbnails
+            .filter((t: Record<string, unknown>) => !!t.layersJson)
+            .map((t: Record<string, unknown>) => {
+              try { return { name: "⭐️ " + ((t.title as string) || "내 작업물"), layers: JSON.parse(t.layersJson as string) }; }
+              catch { return null; }
+            })
+            .filter(Boolean);
+          setCustomTemplates(temps);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // 상태 변경 시마다 로컬스토리지 백업 (오토세이브)
@@ -531,17 +549,25 @@ export default function ThumbnailStudioPage() {
     setTimeout(async () => {
       draw();
       const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      
+      const textLayers = layers.filter(l => l.type === "text").map(l => ({...l}));
+      const layersJson = textLayers.length > 0 ? JSON.stringify(textLayers) : null;
+      
       try {
         const res = await fetch("/api/thumbnails", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: `스튜디오 썸네일_${new Date().toISOString().slice(0, 10)}`,
+            title: `내 보관함 템플릿_${new Date().toISOString().slice(0, 10)}`,
             dataUrl,
+            layersJson,
             workspaceId: "test-workspace1"
           })
         });
         if (res.ok) {
+           if (textLayers.length > 0) {
+             setCustomTemplates(prev => [{ name: "⭐️ 방금 저장된 템플릿", layers: textLayers as Partial<TextLayer>[] }, ...prev]);
+           }
            alert("에셋 보관소에 성공적으로 저장되었습니다!");
         } else {
            alert("저장 실패");
@@ -608,14 +634,25 @@ export default function ThumbnailStudioPage() {
         </div>
 
         <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>🔥 스마트 템플릿 (20종)</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>🔥 내 템플릿 / 스마트 템플릿</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
-            원하는 스타일을 클릭하면 멋진 텍스트 디자인 뭉치가 즉시 도화지에 장착됩니다.
+            저장했던 내 작업물이나 자동화 스타일을 클릭하여 디자인을 즉시 장착하세요.
           </p>
           <div style={{ 
             display: "grid", gridTemplateColumns: "1fr", gap: 6, maxHeight: 280, overflowY: "auto", 
             paddingRight: 6, background: "rgba(0,0,0,0.2)", padding: 8, borderRadius: 8
           }}>
+             {customTemplates.map((tpl, i) => (
+                <button 
+                  key={`custom_${i}`} 
+                  className="btn btn-ghost" 
+                  style={{ justifyContent: "flex-start", fontSize: 12, background: "rgba(129, 140, 248, 0.15)", color: "#c7d2fe", height: "auto", padding: "10px 12px", textAlign: "left", border: "1px solid rgba(129, 140, 248, 0.3)" }} 
+                  onClick={() => applyTemplate(tpl)}
+                  title="내가 직접 저장했던 썸네일 재활용 템플릿입니다."
+                >
+                  {tpl.name}
+                </button>
+             ))}
              {STYLE_TEMPLATES.map((tpl, i) => (
                 <button 
                   key={i} 

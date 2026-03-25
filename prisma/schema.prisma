@@ -201,6 +201,7 @@ model ThumbnailAsset {
   id             String   @id @default(cuid())
   title          String?  // 유저가 지정한 이름 또는 자동 생성 이름
   dataUrl        String   @db.Text // 생성된 완성 이미지 (Base64)
+  layersJson     String?  @db.Text // 템플릿(텍스트 레이어) 재사용을 위한 JSON 데이터
   
   workspaceId    String
   workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
