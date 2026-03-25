@@ -145,6 +145,19 @@ export default function ThumbnailStudioPage() {
     draw();
   }, [draw]);
 
+  // 에셋 보관소에서 넘어온 이미지 로드
+  useEffect(() => {
+    const storedBg = sessionStorage.getItem("thumbnail_bg");
+    if (storedBg) {
+      const img = new Image();
+      img.src = storedBg;
+      img.onload = () => {
+        setBgImage(img);
+        sessionStorage.removeItem("thumbnail_bg");
+      };
+    }
+  }, []);
+
   // 마우스 이벤트 헬퍼
   const getMousePos = (e: MouseEvent | React.MouseEvent) => {
     const canvas = canvasRef.current;

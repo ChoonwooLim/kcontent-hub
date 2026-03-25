@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Image as ImageIcon, Film, Download,
-  Search, X, Globe
+  Search, X, Globe, Palette
 } from "lucide-react";
 
 type CapturedAsset = {
@@ -37,6 +38,7 @@ export default function AssetsLibraryPage() {
   const [captures, setCaptures] = useState<CapturedAsset[]>([]);
   const [videos, setVideos] = useState<DownloadedFile[]>([]);
   const [search, setSearch] = useState("");
+  const router = useRouter();
   
   // 프레임 뷰어 모달
   const [modalImage, setModalImage] = useState<CapturedAsset | null>(null);
@@ -257,9 +259,21 @@ export default function AssetsLibraryPage() {
                 <div style={{ fontSize: 18, fontWeight: 700, color: "white", marginBottom: 6 }}>{modalImage.scriptTitle}</div>
                 <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)" }}>{modalImage.sceneText}</div>
               </div>
-              <button className="btn btn-brand" onClick={() => handleDownloadImage(modalImage)}>
-                <Download size={15} /> PC에 저장하기
-              </button>
+              <div style={{ display: "flex", gap: 12 }}>
+                <button 
+                  className="btn btn-ghost" 
+                  style={{ background: "rgba(255,255,255,0.1)", color: "white" }}
+                  onClick={() => {
+                    sessionStorage.setItem("thumbnail_bg", modalImage.dataUrl);
+                    router.push("/dashboard/thumbnail");
+                  }}
+                >
+                  <Palette size={15} color="#a5b4fc" /> 썸네일 스튜디오로 보내기
+                </button>
+                <button className="btn btn-brand" onClick={() => handleDownloadImage(modalImage)}>
+                  <Download size={15} /> PC에 저장하기
+                </button>
+              </div>
             </div>
           </div>
         </div>
