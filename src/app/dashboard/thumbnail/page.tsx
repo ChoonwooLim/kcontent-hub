@@ -43,141 +43,101 @@ type Layer = TextLayer | ImageLayer;
 
 const STYLE_TEMPLATES = [
   {
-    name: "1. 💥충격! 대반전 (어그로형)",
+    name: "1. 💥 폭로/어그로 (대반전)",
+    bgImage: "https://images.unsplash.com/photo-1508672019048-805c876b67e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "상상도 못한", fontSize: 180, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, x: 960, y: 780, shadowBlur: 20, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "충격적인 결말?!", fontSize: 260, isBold: true, isItalic: true, color: "#FFEB3B", strokeColor: "#000000", strokeWidth: 30, x: 960, y: 950, shadowBlur: 40, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "단독 공개!", fontSize: 130, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 20, shadowBlur: 40, shadowColor: "rgba(225,29,72,0.8)", x: 300, y: 180, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "그날 방안에서 일어난", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, x: 960, y: 760, shadowBlur: 30, shadowColor: "black", fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "충격적인 진실?!", fontSize: 280, isBold: true, isItalic: true, color: "#FDE047", strokeColor: "#000000", strokeWidth: 40, x: 960, y: 920, shadowBlur: 50, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
-    name: "2. 🚨긴급 속보 (뉴스형)",
+    name: "2. 🚨 긴급 속보 (뉴스형 분석)",
+    bgImage: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "[긴급 속보]", fontSize: 130, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 8, x: 280, y: 150, shadowBlur: 20, shadowColor: "black", fontFamily: "var(--font-pretendard), sans-serif" },
-      { text: "결국 사태가 일어났다...", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#D32F2F", strokeWidth: 35, x: 960, y: 900, shadowBlur: 20, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "[긴급 속보]", fontSize: 140, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, x: 280, y: 150, shadowBlur: 20, shadowColor: "rgba(0,0,0,0.8)", fontFamily: "var(--font-pretendard), sans-serif" },
+      { text: "한국 경제의 골든타임", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#1D4ED8", strokeWidth: 25, x: 960, y: 750, shadowBlur: 40, shadowColor: "black", fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "드디어 터졌다!", fontSize: 260, isBold: true, isItalic: false, color: "#F87171", strokeColor: "#000000", strokeWidth: 35, x: 960, y: 950, shadowBlur: 60, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
-    name: "3. 🎙️감성 브이로그 (일상형)",
+    name: "3. 🎙️ 감성 브이로그 (일상형)",
+    bgImage: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "나만의 소소한 주말 기록", fontSize: 140, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 50, shadowColor: "black", x: 960, y: 540, fontFamily: "var(--font-pretendard), sans-serif" },
-      { text: "ep.01", fontSize: 80, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 10, shadowColor: "black", x: 960, y: 720, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: "나만의 소소한 힐링 기록", fontSize: 140, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 40, shadowColor: "rgba(0,0,0,0.5)", x: 960, y: 540, fontFamily: "var(--font-pretendard), sans-serif" },
+      { text: "sunday morning ep.01", fontSize: 80, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 20, shadowColor: "rgba(0,0,0,0.4)", x: 960, y: 720, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   },
   {
-    name: "4. 🎤아이돌 직캠 (팬튜브형)",
+    name: "4. 🎤 팬튜브 직캠 (예능형)",
+    bgImage: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "미모가 미쳤습니다", fontSize: 240, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#EC4899", strokeWidth: 30, shadowBlur: 80, shadowColor: "#EC4899", x: 960, y: 920, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "미모가 진짜 미쳤습니다", fontSize: 220, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#EC4899", strokeWidth: 30, shadowBlur: 80, shadowColor: "#EC4899", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" },
       { text: "레전드 찍은 역대급 무대", fontSize: 140, isBold: true, isItalic: false, color: "#FFD700", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 150, fontFamily: "'Do Hyeon', sans-serif" }
     ]
   },
   {
-    name: "5. 🍲먹방 투어 (음식형)",
+    name: "5. 🍲 먹방 투어 (음식형)",
+    bgImage: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "이 가격에 이 퀄리티?!", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#F97316", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
-      { text: "인생 맛집 찾았습니다", fontSize: 250, isBold: true, isItalic: false, color: "#FFED4A", strokeColor: "#000000", strokeWidth: 35, shadowBlur: 50, shadowColor: "black", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "이 가격에 이 퀄리티?!", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#EA580C", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
+      { text: "인생 맛집 찾았습니다", fontSize: 250, isBold: true, isItalic: false, color: "#FEF08A", strokeColor: "#000000", strokeWidth: 35, shadowBlur: 50, shadowColor: "black", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
-    name: "6. ✨리뷰/테크 (IT형)",
+    name: "6. ✨ 리뷰/테크 (IT분석형)",
+    bgImage: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "이거 안 사면 후회합니다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#3B82F6", strokeWidth: 20, shadowBlur: 50, shadowColor: "#3B82F6", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" },
-      { text: "장단점 솔직 리뷰", fontSize: 110, isBold: true, isItalic: false, color: "#60A5FA", strokeColor: "#000", strokeWidth: 8, shadowBlur: 0, shadowColor: "black", x: 960, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: "이거 안 사면 후회합니다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#2563EB", strokeWidth: 20, shadowBlur: 60, shadowColor: "rgba(37,99,235,0.7)", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "무조건 사야하는 진짜 이유", fontSize: 110, isBold: true, isItalic: false, color: "#93C5FD", strokeColor: "#000000", strokeWidth: 12, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   },
   {
-    name: "7. 🎬영화 요약 (스토리형)",
+    name: "7. 🎬 영화 요약 (스토리텔링)",
+    bgImage: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "외계인이 지구에 왔다가", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 20, shadowBlur: 50, shadowColor: "black", x: 960, y: 780, fontFamily: "'Do Hyeon', sans-serif" },
-      { text: "초토화 되어버린 이유", fontSize: 240, isBold: true, isItalic: false, color: "#FF4500", strokeColor: "#000", strokeWidth: 30, shadowBlur: 50, shadowColor: "black", x: 960, y: 960, fontFamily: "'Black Han Sans', sans-serif" }
+      { text: "지구에 불시착한 외계인이", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 20, shadowBlur: 50, shadowColor: "black", x: 960, y: 780, fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "한국에서 겪은 충격적인 일", fontSize: 210, isBold: true, isItalic: false, color: "#FF4500", strokeColor: "#000", strokeWidth: 25, shadowBlur: 50, shadowColor: "black", x: 960, y: 960, fontFamily: "'Black Han Sans', sans-serif" }
     ]
   },
   {
-    name: "8. ✈️여행/핫플 (꿀팁형)",
+    name: "8. ✈️ 세계 여행 (비행꿀팁)",
+    bgImage: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "한국인 99%가 모르는", fontSize: 150, isBold: true, isItalic: false, color: "#FFFF00", strokeColor: "#000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
-      { text: "숨겨진 지상낙원 어딜까?", fontSize: 210, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" }
+      { text: "비행기 표 50% 아끼는", fontSize: 150, isBold: true, isItalic: false, color: "#FEF08A", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
+      { text: "초특급 예매의 비밀", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" }
     ]
   },
   {
-    name: "9. 📈주식/재테크 (경제형)",
+    name: "9. 📈 주식/재테크 (폭등예고)",
+    bgImage: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "내일부터 무조건 오릅니다", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 26, shadowBlur: 40, shadowColor: "#E11D48", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "전문가 긴급 분석", fontSize: 120, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 280, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
+      { text: "내일부터 무조건 오릅니다", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 26, shadowBlur: 40, shadowColor: "#E11D48", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "전문가 긴급 차트 분석", fontSize: 120, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 300, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
     ]
   },
   {
-    name: "10. 🎮게임 하이라이트 (매드무비)",
+    name: "10. 🎮 게임 하이라이트 (매드무비)",
+    bgImage: "https://images.unsplash.com/photo-1542751371-adc38448a05e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: "1 대 5를 이겨버린다고?", fontSize: 240, isBold: true, isItalic: true, color: "#4ADE80", strokeColor: "#000", strokeWidth: 35, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "#매드무비 #레전드", fontSize: 100, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "'Do Hyeon', sans-serif" }
+      { text: "1 대 5를 이겨버린다고?", fontSize: 240, isBold: true, isItalic: true, color: "#4ADE80", strokeColor: "#000000", strokeWidth: 35, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "#매드무비 #레전드", fontSize: 100, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "'Do Hyeon', sans-serif" }
     ]
   },
   {
-    name: "11. 🐶동물/반려견 (귀요미형)",
+    name: "11. 🐶 동물/반려견 (귀요미집중)",
+    bgImage: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
       { text: "주인 몰래 간식 훔쳐먹다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#F472B6", strokeWidth: 20, shadowBlur: 30, shadowColor: "black", x: 960, y: 780, fontFamily: "'Jua', sans-serif" },
-      { text: "딱 걸린 댕댕이 ㅋㅋㅋ", fontSize: 240, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 960, fontFamily: "'Jua', sans-serif" }
+      { text: "딱 걸린 댕댕이 상황 ㅋㅋㅋ", fontSize: 220, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000000", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 960, fontFamily: "'Jua', sans-serif" }
     ]
   },
   {
-    name: "12. 💬인터뷰/대담 (인물집중형)",
+    name: "12. 💬 인터뷰/대담 (인물집중)",
+    bgImage: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80",
     layers: [
-      { text: `"제가 사실 그때..."`, fontSize: 170, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 50, shadowColor: "black", x: 960, y: 760, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: `"제가 사실 그때..."`, fontSize: 170, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 50, shadowColor: "black", x: 960, y: 760, fontFamily: "'Noto Sans KR', sans-serif" },
       { text: "드디어 밝혀진 진짜 이유", fontSize: 130, isBold: true, isItalic: false, color: "#D1D5DB", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "var(--font-pretendard), sans-serif" }
-    ]
-  },
-  {
-    name: "13. 🔥폭로/논란 (진실공방)",
-    layers: [
-      { text: "더 이상 못 참겠습니다", fontSize: 260, isBold: true, isItalic: false, color: "#E11D48", strokeColor: "#FFFFFF", strokeWidth: 20, shadowBlur: 60, shadowColor: "black", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" }
-    ]
-  },
-  {
-    name: "14. 👻공포/미스터리 (납량특집)",
-    layers: [
-      { text: "절대 혼자 보지 마세요", fontSize: 190, isBold: true, isItalic: false, color: "#991B1B", strokeColor: "#000", strokeWidth: 15, shadowBlur: 80, shadowColor: "#EF4444", x: 960, y: 540, fontFamily: "'Do Hyeon', sans-serif" },
-      { text: "폐가에서 찍힌 기묘한 형체", fontSize: 140, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 30, shadowColor: "black", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" }
-    ]
-  },
-  {
-    name: "15. 😂유머/짤방 (숏폼감성)",
-    layers: [
-      { text: "아 ㅋㅋㅋㅋㅋㅋ", fontSize: 300, isBold: true, isItalic: true, color: "#FFFF00", strokeColor: "#000000", strokeWidth: 40, shadowBlur: 20, shadowColor: "black", x: 960, y: 540, fontFamily: "'Jua', sans-serif" }
-    ]
-  },
-  {
-    name: "16. 💡강좌/꿀팁 (교육형)",
-    layers: [
-      { text: "엑셀 단축키 딱 3개면", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 20, shadowColor: "black", x: 960, y: 780, fontFamily: "'Noto Sans KR', sans-serif" },
-      { text: "퇴근 시간이 2시간 빨라짐", fontSize: 200, isBold: true, isItalic: false, color: "#34D399", strokeColor: "#000", strokeWidth: 20, shadowBlur: 30, shadowColor: "black", x: 960, y: 950, fontFamily: "'Black Han Sans', sans-serif" }
-    ]
-  },
-  {
-    name: "17. 💄뷰티/패션 (세련된 스타일)",
-    layers: [
-      { text: "올 봄 유행할 메이크업", fontSize: 180, isBold: true, isItalic: false, color: "#FDA4AF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 40, shadowColor: "rgba(0,0,0,0.6)", x: 960, y: 800, fontFamily: "'Do Hyeon', sans-serif" },
-      { text: "퍼스널 컬러 완벽 가이드", fontSize: 140, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 20, shadowColor: "rgba(0,0,0,0.6)", x: 960, y: 960, fontFamily: "var(--font-pretendard), sans-serif" }
-    ]
-  },
-  {
-    name: "18. 💪운동/다이어트 (강렬한 동기부여)",
-    layers: [
-      { text: "한 달 만에 -10kg?!", fontSize: 220, isBold: true, isItalic: true, color: "#FDE047", strokeColor: "#000", strokeWidth: 25, shadowBlur: 30, shadowColor: "black", x: 960, y: 240, fontFamily: "'Black Han Sans', sans-serif" },
-      { text: "기적의 홈트 루틴 대공개", fontSize: 150, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 20, shadowColor: "black", x: 960, y: 920, fontFamily: "'Do Hyeon', sans-serif" }
-    ]
-  },
-  {
-    name: "19. 🚗자동차/드라이브 (액션형)",
-    layers: [
-      { text: "풀옵션 G90 타봤습니다", fontSize: 190, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#1E3A8A", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" },
-      { text: "승차감 실화입니까?", fontSize: 130, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 400, y: 150, fontFamily: "'Noto Sans KR', sans-serif" }
-    ]
-  },
-  {
-    name: "20. 🎉이벤트/당첨 (어그로 극대화)",
-    layers: [
-      { text: "구독자 10만명 달성!", fontSize: 150, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 220, fontFamily: "'Jua', sans-serif" },
-      { text: "맥북 아이패드 쏩니다!!", fontSize: 260, isBold: true, isItalic: true, color: "#FF0000", strokeColor: "#FFFFFF", strokeWidth: 30, shadowBlur: 60, shadowColor: "rgba(255,0,0,0.5)", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" }
     ]
   }
 ];
@@ -489,18 +449,26 @@ export default function ThumbnailStudioPage() {
     setSelectedId(id);
   };
 
-  const applyTemplate = (tpl: { id?: string, name: string, layers: Partial<TextLayer>[] }) => {
-    if (layers.some(l => l.type === "text")) {
-       if (!confirm("기존 텍스트 레이어들이 모두 지워지고 새로운 템플릿이 덮어씌워집니다.\n계속하시겠습니까? (배경은 유지됩니다)")) return;
-    }
-    const nonText = layers.filter(l => l.type !== "text");
-    const newTextLayers = tpl.layers.map((l, i) => ({
-      id: `text_tpl_${Date.now()}_${i}`,
+  const applyTemplate = (tpl: { id?: string, name: string, bgImage?: string, layers: Partial<TextLayer>[] }) => {
+    // 기존 이미지는 두고 텍스트 레이어 교체 (배경은 개별 로드)
+    const newLayers = tpl.layers.map((l, i) => ({
+      ...l,
+      id: "layer_tpl_" + Date.now() + "_" + i,
       type: "text" as const,
-      ...l
-    } as TextLayer));
-    setLayers([...nonText, ...newTextLayers]);
-    if (newTextLayers.length > 0) setSelectedId(newTextLayers[0].id);
+    })) as TextLayer[];
+    
+    setLayers(newLayers);
+    
+    if (tpl.bgImage) {
+      const img = new Image();
+      img.crossOrigin = "anonymous"; // CORS 문제 방지
+      img.src = tpl.bgImage;
+      img.onload = () => setBgImage(img);
+    } else {
+      setBgImage(null); // 배경 이미지가 없으면 제거
+    }
+    
+    if (newLayers.length > 0) setSelectedId(newLayers[0].id); // 첫 번째 생성된 레이어 선택
     setLoadedTemplateId(tpl.id || null);
   };
 
@@ -722,22 +690,24 @@ export default function ThumbnailStudioPage() {
             className="btn btn-ghost" 
             style={{ 
               height: 42, 
-              background: loadedTemplateId ? "rgba(250, 204, 21, 0.15)" : "rgba(255,255,255,0.03)", 
-              color: loadedTemplateId ? "#facc15" : "rgba(255,255,255,0.4)", 
-              border: loadedTemplateId ? "1px solid rgba(250, 204, 21, 0.3)" : "1px solid rgba(255,255,255,0.1)", 
+              background: "rgba(250, 204, 21, 0.15)", 
+              color: "#facc15", 
+              border: "1px solid rgba(250, 204, 21, 0.3)", 
               fontSize: 13,
-              cursor: loadedTemplateId ? "pointer" : "not-allowed"
+              cursor: "pointer"
             }} 
             onClick={() => {
               if (!loadedTemplateId) {
-                alert("불러온 '나만의 프리셋'이 없습니다.\n\n새로운 디자인은 갤러리 아래쪽의 [이 디자인을 내 프리셋으로 신규 저장] 버튼을 눌러 최초 저장하신 후부터 덮어쓰기가 가능합니다.");
+                if(confirm("기본 제공 템플릿(1~20번)은 원본 보호를 위해 덮어쓸 수 없습니다.\n대신 변경하신 내용을 [나만의 프리셋]으로 새롭게 저장하시겠습니까? (이후부터는 계속 덮어쓰기가 가능합니다.)")) {
+                  saveToAssets({ isTemplateNew: true });
+                }
                 return;
               }
               saveToAssets({ isTemplateUpdate: true });
             }} 
             disabled={isSaving}
           >
-            {isSaving ? "저장 중..." : "🔄 현재 프리셋 디자인 (덮어쓰기)"}
+            {isSaving ? "저장 중..." : "🔄 현재 프리셋 형태(디자인) 덮어쓰기"}
           </button>
           
           <button className="btn btn-ghost" style={{ height: 42, background: "rgba(255,255,255,0.05)", fontSize: 13 }} onClick={() => saveToAssets({ isTemplateNew: true })} disabled={isSaving}>
