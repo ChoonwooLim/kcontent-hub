@@ -1024,7 +1024,7 @@ function ScriptPageInner() {
               const frame = frames[line.time];
               const isCaptured = captures.some(c => c.time === line.time);
               return (
-                <div key={i}
+                <div key={`${result.title}_${i}_${line.time}`}
                   style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid rgba(30,30,46,0.5)", transition: "background 0.15s" }}
                   onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.015)")}
                   onMouseLeave={e => (e.currentTarget.style.background = "")}>
@@ -1094,6 +1094,7 @@ function ScriptPageInner() {
                   {/* 대사 */}
                   <div style={{ flex: 1, padding: "14px 16px", display: "flex", alignItems: "center" }}>
                     <textarea
+                      key={`${result.title}_${i}_${line.ko.substring(0, 10)}`}
                       defaultValue={line.ko}
                       rows={2}
                       style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13.5, lineHeight: 1.6, resize: "none", fontFamily: "Inter, sans-serif" }}
