@@ -551,7 +551,7 @@ export default function ThumbnailStudioPage() {
     }, 50);
   };
 
-  const saveToAssets = async (updateExisting: boolean = false) => {
+  const saveToAssets = async (options: { isTemplateUpdate?: boolean, isTemplateNew?: boolean, isAssetOnly?: boolean }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -565,10 +565,11 @@ export default function ThumbnailStudioPage() {
       const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
       
       const textLayers = layers.filter(l => l.type === "text").map(l => ({...l}));
-      const layersJson = textLayers.length > 0 ? JSON.stringify(textLayers) : null;
+      // 에셋 단독 저장일 때는 layersJson을 보내지 않아서 갤러리(프리셋)에 뜨지 않게 함
+      const layersJson = (options.isTemplateUpdate || options.isTemplateNew) && textLayers.length > 0 ? JSON.stringify(textLayers) : null;
       
       try {
-        if (updateExisting && loadedTemplateId) {
+        if (options.isTemplateUpdate && loadedTemplateId) {
           const res = await fetch("/api/thumbnails", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -585,18 +586,21 @@ export default function ThumbnailStudioPage() {
              alert("프리셋 덮어쓰기 실패");
           }
         } else {
+          // POST (새 템플릿 또는 단순 에셋)
+          const titleLabel = options.isAssetOnly ? `완성 썸네일_${new Date().toISOString().slice(0, 10)}` : `나만의 프리셋_${new Date().toISOString().slice(0, 10)}`;
           const res = await fetch("/api/thumbnails", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              title: `내 보관함 템플릿_${new Date().toISOString().slice(0, 10)}`,
+              title: titleLabel,
               dataUrl,
               layersJson,
-              workspaceId: "test-workspace1"
+              workspaceId: "test-workspace1" // Fallback (API ignores if proper session found)
             })
           });
           if (res.ok) {
-             alert("새 프리셋(에셋)으로 성공적으로 저장되었습니다!");
+             if (options.isAssetOnly) alert("에셋 보관소에 성공적으로 저장되었습니다!");
+             else alert("새 프리셋으로 갤러리에 완전히 저장되었습니다!");
              if ((window as any).__fetchCustomTemplates) (window as any).__fetchCustomTemplates();
           } else {
              alert("저장 실패");
@@ -653,8 +657,10 @@ export default function ThumbnailStudioPage() {
   const selectedLayer = layers.find(l => l.id === selectedId);
 
   return (
-    <div style={{ display: "flex", height: "calc(100vh - 40px)", gap: 24, paddingTop: 10, paddingBottom: 10, maxWidth: 1600 }}>
-        {/* ── 좌초 툴바 ── */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 30, paddingTop: 10, paddingBottom: 60, maxWidth: 1600, margin: "0 auto" }}>
+      {/* ── 상단 3단 레이아웃 (좌/중앙/우) ── */}
+      <div style={{ display: "flex", gap: 24, height: "calc(100vh - 80px)", minHeight: 600, maxHeight: 900 }}>
+        {/* ── 좌측 툴바 ── */}
       <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", paddingRight: 4 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em" }}>썸네일 스튜디오</h1>
@@ -704,15 +710,21 @@ export default function ThumbnailStudioPage() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8, flexShrink: 0 }}>
           {loadedTemplateId && (
-            <button className="btn btn-ghost" style={{ height: 48, background: "rgba(250, 204, 21, 0.15)", color: "#facc15", border: "1px solid rgba(250, 204, 21, 0.3)" }} onClick={() => saveToAssets(true)} disabled={isSaving}>
-              {isSaving ? "저장 중..." : "🔄 현재 프리셋 디자인으로 수정 (덮어쓰기)"}
+            <button className="btn btn-ghost" style={{ height: 42, background: "rgba(250, 204, 21, 0.15)", color: "#facc15", border: "1px solid rgba(250, 204, 21, 0.3)", fontSize: 13 }} onClick={() => saveToAssets({ isTemplateUpdate: true })} disabled={isSaving}>
+              {isSaving ? "저장 중..." : "🔄 현재 프리셋 형태(디자인) 덮어쓰기"}
             </button>
           )}
-          <button className="btn btn-ghost" style={{ height: 48, background: "rgba(255,255,255,0.05)" }} onClick={() => saveToAssets(false)} disabled={isSaving}>
-            <Archive size={16} color="#34d399" /> {isSaving ? "저장 중..." : "새 템플릿(에셋)으로 저장"}
+          <button className="btn btn-ghost" style={{ height: 42, background: "rgba(255,255,255,0.05)", fontSize: 13 }} onClick={() => saveToAssets({ isTemplateNew: true })} disabled={isSaving}>
+            <Layers size={14} color="#818cf8" style={{ marginRight: 6 }} /> {isSaving ? "저장 중..." : "이 디자인을 내 프리셋으로 신규 저장"}
           </button>
-          <button className="btn btn-brand" style={{ height: 48 }} onClick={downloadThumbnail}>
-            <Download size={16} /> 고화질 썸네일 다운로드
+          
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
+
+          <button className="btn btn-ghost" style={{ height: 42, background: "rgba(255,255,255,0.05)", fontSize: 13 }} onClick={() => saveToAssets({ isAssetOnly: true })} disabled={isSaving}>
+            <Archive size={14} color="#34d399" style={{ marginRight: 6 }} /> {isSaving ? "저장 중..." : "최종 완성본 - 에셋 보관소로 저장"}
+          </button>
+          <button className="btn btn-brand" style={{ height: 48, fontSize: 14 }} onClick={downloadThumbnail}>
+            <Download size={16} /> 고화질 썸네일 다운로드 (PC)
           </button>
         </div>
       </div>
@@ -739,78 +751,6 @@ export default function ThumbnailStudioPage() {
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseUp}
           />
-        </div>
-
-        {/* ── 템플릿 갤러리 (하단) ── */}
-        <div className="card" style={{ width: "100%", maxWidth: 1000, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>🔥 템플릿 갤러리</span>
-            <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>스마트 템플릿 및 내 작업물 ({customTemplates.length + STYLE_TEMPLATES.length}종)</span>
-          </div>
-          <div style={{ 
-             display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16
-          }}>
-            {[...customTemplates, ...STYLE_TEMPLATES].map((tpl, i) => (
-              <div 
-                key={i}
-                onClick={() => applyTemplate(tpl as { name: string, layers: Partial<TextLayer>[] })}
-                style={{
-                  width: "100%", aspectRatio: "16/9", 
-                  background: "#0f172a", borderRadius: 10, cursor: "pointer",
-                  border: "2px solid rgba(255,255,255,0.08)", overflow: "hidden",
-                  position: "relative",
-                  transition: "all 0.15s"
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
-                title={tpl.name}
-              >
-                {/* 1920x1080 축소 이미지 변환 레이어 */}
-                <div style={{
-                    width: 1920, height: 1080, position: "absolute", top: 0, left: 0,
-                    transform: "scale(0.165)", transformOrigin: "top left",
-                    pointerEvents: "none"
-                 }}>
-                    {(tpl as any).image ? (
-                       <img src={(tpl as any).image} style={{ width: 1920, height: 1080, objectFit: "cover", position: "absolute", inset: 0 }} alt="preset preview" />
-                    ) : (
-                       <div style={{ 
-                         width: 1920, height: 1080, position: "absolute", inset: 0, 
-                         background: "url('https://images.unsplash.com/photo-1620121692029-d088224ddc74?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') center/cover", 
-                         opacity: 0.5 
-                       }} />
-                    )}
-
-                    {!(tpl as any).image && tpl.layers.map((l: Record<string, unknown>, li: number) => {
-                       if (l.type === "text") {
-                         const lines = ((l.text as string) || "").split("\n");
-                         return (
-                           <div key={li} style={{
-                              position: "absolute", left: l.x as number, top: l.y as number,
-                              transform: "translate(-50%, -50%)",
-                              color: l.color as string, fontFamily: l.fontFamily as string,
-                              fontSize: l.fontSize as number, fontWeight: l.isBold ? "bold" : "normal", fontStyle: l.isItalic ? "italic" : "normal",
-                              textShadow: `${l.shadowBlur}px ${l.shadowBlur}px ${l.shadowColor}`,
-                              WebkitTextStroke: `${l.strokeWidth}px ${l.strokeColor}`,
-                              whiteSpace: "pre-wrap", textAlign: "center", lineHeight: "1.2"
-                           }}>
-                              {lines.map((line: string, lIdx: number) => <div key={lIdx}>{line}</div>)}
-                           </div>
-                         )
-                       }
-                       return null;
-                    })}
-                 </div>
-                 {/* 타이틀 오버레이 */}
-                 <div style={{ position: "absolute", top: 0, left: 0, background: tpl.name.includes("⭐️") ? "rgba(250, 204, 21, 0.9)" : "rgba(0,0,0,0.7)", color: tpl.name.includes("⭐️") ? "#000" : "white", fontSize: 11, fontWeight: 800, padding: "4px 10px", borderBottomRightRadius: 10 }}>
-                    {tpl.name.includes("⭐️") ? "MY ✨" : "PRESET"}
-                 </div>
-                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "30px 12px 10px", background: "linear-gradient(to top, rgba(0,0,0,0.95), transparent)", color: "white", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                   {tpl.name.replace("⭐️ ", "")}
-                 </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -950,6 +890,80 @@ export default function ThumbnailStudioPage() {
         </div>
 
       </div>
+      </div> {/* 상단 레이아웃 종료 */}
+
+      {/* ── 템플릿 갤러리 (하단 가로 꽉 찬 영역) ── */}
+      <div className="card" style={{ width: "100%", padding: "24px 30px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>🔥 스마트 템플릿 갤러리 & 보관함</span>
+          <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 400 }}>스마트 템플릿 및 내 작업물 ({customTemplates.length + STYLE_TEMPLATES.length}종)</span>
+        </div>
+        <div style={{ 
+           display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 20
+        }}>
+          {[...customTemplates, ...STYLE_TEMPLATES].map((tpl, i) => (
+            <div 
+              key={i}
+              onClick={() => applyTemplate(tpl as { id?: string, name: string, layers: Partial<TextLayer>[] })}
+              style={{
+                width: "100%", aspectRatio: "16/9", 
+                background: "#0f172a", borderRadius: 10, cursor: "pointer",
+                border: "2px solid rgba(255,255,255,0.08)", overflow: "hidden",
+                position: "relative",
+                transition: "all 0.15s"
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
+              title={tpl.name}
+            >
+              {/* 1920x1080 축소 이미지 변환 레이어 */}
+              <div style={{
+                  width: 1920, height: 1080, position: "absolute", top: 0, left: 0,
+                  transform: "scale(0.165)", transformOrigin: "top left",
+                  pointerEvents: "none"
+               }}>
+                  {(tpl as any).image ? (
+                     <img src={(tpl as any).image} style={{ width: 1920, height: 1080, objectFit: "cover", position: "absolute", inset: 0 }} alt="preset preview" />
+                  ) : (
+                     <div style={{ 
+                       width: 1920, height: 1080, position: "absolute", inset: 0, 
+                       background: "url('https://images.unsplash.com/photo-1620121692029-d088224ddc74?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') center/cover", 
+                       opacity: 0.5 
+                     }} />
+                  )}
+
+                  {!(tpl as any).image && tpl.layers.map((l: Record<string, unknown>, li: number) => {
+                     if (l.type === "text") {
+                       const lines = ((l.text as string) || "").split("\n");
+                       return (
+                         <div key={li} style={{
+                            position: "absolute", left: l.x as number, top: l.y as number,
+                            transform: "translate(-50%, -50%)",
+                            color: l.color as string, fontFamily: l.fontFamily as string,
+                            fontSize: l.fontSize as number, fontWeight: l.isBold ? "bold" : "normal", fontStyle: l.isItalic ? "italic" : "normal",
+                            textShadow: `${l.shadowBlur}px ${l.shadowBlur}px ${l.shadowColor}`,
+                            WebkitTextStroke: `${l.strokeWidth}px ${l.strokeColor}`,
+                            whiteSpace: "pre-wrap", textAlign: "center", lineHeight: "1.2"
+                         }}>
+                            {lines.map((line: string, lIdx: number) => <div key={lIdx}>{line}</div>)}
+                         </div>
+                       )
+                     }
+                     return null;
+                  })}
+               </div>
+               {/* 타이틀 오버레이 */}
+               <div style={{ position: "absolute", top: 0, left: 0, background: tpl.name.includes("⭐️") ? "rgba(250, 204, 21, 0.9)" : "rgba(0,0,0,0.7)", color: tpl.name.includes("⭐️") ? "#000" : "white", fontSize: 11, fontWeight: 800, padding: "4px 10px", borderBottomRightRadius: 10 }}>
+                  {tpl.name.includes("⭐️") ? "MY ✨" : "PRESET"}
+               </div>
+               <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "30px 12px 10px", background: "linear-gradient(to top, rgba(0,0,0,0.95), transparent)", color: "white", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                 {tpl.name.replace("⭐️ ", "")}
+               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </div>
   );
 }

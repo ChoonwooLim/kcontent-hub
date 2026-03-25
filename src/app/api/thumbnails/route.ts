@@ -1,15 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 
-const prisma = new PrismaClient();
+// workspace ID를 안전하게 가져오는 헬퍼
+async function getWorkspaceId(): Promise<string | null> {
+  try {
+    const session = await auth();
+    if (session?.user?.email) {
+      const user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        include: { workspaceMembers: true },
+      });
+      if (user?.workspaceMembers[0]?.workspaceId) {
+        return user.workspaceMembers[0].workspaceId;
+      }
+    }
+  } catch { /* auth 실패 시 fallback */ }
+
+  // Fallback: 첫 번째 workspace 사용
+  try {
+    const ws = await prisma.workspace.findFirst();
+    return ws?.id || null;
+  } catch { return null; }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, dataUrl, layersJson, workspaceId } = body;
+    const { title, dataUrl, layersJson, workspaceId: bodyWsId } = body;
+
+    const workspaceId = bodyWsId && bodyWsId !== "test-workspace1" ? bodyWsId : await getWorkspaceId();
 
     if (!dataUrl || !workspaceId) {
-      return NextResponse.json({ error: "No dataUrl or workspaceId" }, { status: 400 });
+      return NextResponse.json({ error: "No dataUrl or valid workspace fallback" }, { status: 400 });
     }
 
     const saved = await prisma.thumbnailAsset.create({
@@ -31,10 +54,11 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const workspaceId = searchParams.get("workspaceId");
+    const qsWsId = searchParams.get("workspaceId");
+    const workspaceId = qsWsId && qsWsId !== "test-workspace1" ? qsWsId : await getWorkspaceId();
 
     if (!workspaceId) {
-      return NextResponse.json({ error: "No workspaceId" }, { status: 400 });
+      return NextResponse.json({ error: "No valid workspace fallback" }, { status: 400 });
     }
 
     const thumbnails = await prisma.thumbnailAsset.findMany({
