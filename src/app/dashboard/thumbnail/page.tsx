@@ -707,37 +707,42 @@ export default function ThumbnailStudioPage() {
         </div>
 
         {/* ── 템플릿 갤러리 (하단) ── */}
-        <div className="card" style={{ width: "100%", maxWidth: 1000, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="card" style={{ width: "100%", maxWidth: 1000, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>🔥 템플릿 갤러리</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>스마트 템플릿 및 내 작업물 ({customTemplates.length + STYLE_TEMPLATES.length}종)</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>스마트 템플릿 및 내 작업물 ({customTemplates.length + STYLE_TEMPLATES.length}종)</span>
           </div>
           <div style={{ 
-             display: "flex", overflowX: "auto", gap: 12, paddingBottom: 8,
-             scrollbarWidth: "thin"
+             display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16
           }}>
             {[...customTemplates, ...STYLE_TEMPLATES].map((tpl, i) => (
               <div 
                 key={i}
                 onClick={() => applyTemplate(tpl as { name: string, layers: Partial<TextLayer>[] })}
                 style={{
-                  flexShrink: 0,
-                  height: 96, aspectRatio: "16/9", 
-                  background: "#1e1e24", borderRadius: 8, cursor: "pointer",
+                  width: "100%", aspectRatio: "16/9", 
+                  background: "#0f172a", borderRadius: 10, cursor: "pointer",
                   border: "2px solid rgba(255,255,255,0.08)", overflow: "hidden",
                   position: "relative",
                   transition: "all 0.15s"
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0)"; }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
                 title={tpl.name}
               >
                 {/* 1920x1080 축소 이미지 변환 레이어 */}
                 <div style={{
                     width: 1920, height: 1080, position: "absolute", top: 0, left: 0,
-                    transform: "scale(0.0888)", transformOrigin: "top left",
+                    transform: "scale(0.165)", transformOrigin: "top left",
                     pointerEvents: "none"
                  }}>
+                    {/* 가독성을 높이기 위한 다크 모던 더미 배경 */}
+                    <div style={{ 
+                      width: 1920, height: 1080, position: "absolute", inset: 0, 
+                      background: "url('https://images.unsplash.com/photo-1620121692029-d088224ddc74?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80') center/cover", 
+                      opacity: 0.5 
+                    }} />
+
                     {tpl.layers.map((l: Record<string, unknown>, li: number) => {
                        if (l.type === "text") {
                          const lines = ((l.text as string) || "").split("\n");
@@ -759,10 +764,10 @@ export default function ThumbnailStudioPage() {
                     })}
                  </div>
                  {/* 타이틀 오버레이 */}
-                 <div style={{ position: "absolute", top: 0, left: 0, background: tpl.name.includes("⭐️") ? "rgba(250, 204, 21, 0.9)" : "rgba(0,0,0,0.7)", color: tpl.name.includes("⭐️") ? "#000" : "white", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderBottomRightRadius: 8 }}>
-                    {tpl.name.includes("⭐️") ? "MY" : "PRESET"}
+                 <div style={{ position: "absolute", top: 0, left: 0, background: tpl.name.includes("⭐️") ? "rgba(250, 204, 21, 0.9)" : "rgba(0,0,0,0.7)", color: tpl.name.includes("⭐️") ? "#000" : "white", fontSize: 11, fontWeight: 800, padding: "4px 10px", borderBottomRightRadius: 10 }}>
+                    {tpl.name.includes("⭐️") ? "MY ✨" : "PRESET"}
                  </div>
-                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "20px 8px 6px", background: "linear-gradient(to top, rgba(0,0,0,0.95), transparent)", color: "white", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "30px 12px 10px", background: "linear-gradient(to top, rgba(0,0,0,0.95), transparent)", color: "white", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                    {tpl.name.replace("⭐️ ", "")}
                  </div>
               </div>
