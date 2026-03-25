@@ -196,6 +196,18 @@ model StudioSession {
   updatedAt      DateTime @updatedAt
 }
 
+// 에셋 보관소: 썸네일 전용 스토리지 
+model ThumbnailAsset {
+  id             String   @id @default(cuid())
+  title          String?  // 유저가 지정한 이름 또는 자동 생성 이름
+  dataUrl        String   @db.Text // 생성된 완성 이미지 (Base64)
+  
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+}
+
 // ---------------------------------------------------------------------
 // NextAuth & Multi-tenant (SaaS) Models
 // ---------------------------------------------------------------------
@@ -268,6 +280,7 @@ model Workspace {
   studioSessions StudioSession[]
   downloadedFiles DownloadedFile[]
   hunterSearches  HunterSearch[]
+  thumbnails      ThumbnailAsset[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

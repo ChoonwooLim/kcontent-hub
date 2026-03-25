@@ -32,11 +32,19 @@ type DownloadedFile = {
   createdAt: string;
 };
 
+type ProducedThumbnail = {
+  id: string;
+  title: string;
+  dataUrl: string;
+  createdAt: string;
+};
+
 export default function AssetsLibraryPage() {
-  const [tab, setTab] = useState<"images" | "videos">("images");
+  const [tab, setTab] = useState<"images" | "videos" | "thumbnails">("images");
   const [loading, setLoading] = useState(true);
   const [captures, setCaptures] = useState<CapturedAsset[]>([]);
   const [videos, setVideos] = useState<DownloadedFile[]>([]);
+  const [thumbnails, setThumbnails] = useState<ProducedThumbnail[]>([]);
   const [search, setSearch] = useState("");
   const router = useRouter();
   
@@ -62,6 +70,13 @@ export default function AssetsLibraryPage() {
       if (resVids.ok) {
         const data = await resVids.json();
         setVideos(data.files || []);
+      }
+
+      // 제작 썸네일 로드
+      const resThumb = await fetch("/api/thumbnails?workspaceId=test-workspace1");
+      if (resThumb.ok) {
+        const data = await resThumb.json();
+        setThumbnails(data.thumbnails || []);
       }
     } catch { /* 무시 */ }
     finally { setLoading(false); }
@@ -99,6 +114,17 @@ export default function AssetsLibraryPage() {
     (v.filename || "").toLowerCase().includes(search.toLowerCase())
   );
 
+  const filteredThumbnails = thumbnails.filter(t => 
+    (t.title || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleDownloadThumbnail = (t: ProducedThumbnail) => {
+    const a = document.createElement("a");
+    a.href = t.dataUrl;
+    a.download = `${t.title}.jpg`;
+    a.click();
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 1200, height: "100%", paddingBottom: 60 }}>
       {/* 헤더 */}
@@ -127,6 +153,13 @@ export default function AssetsLibraryPage() {
             style={{ width: 140, justifyContent: "center" }}
           >
             <Film size={14} />다운로드 영상 ({videos.length})
+          </button>
+          <button 
+            className={`btn ${tab === "thumbnails" ? "btn-brand" : "btn-ghost"}`} 
+            onClick={() => setTab("thumbnails")}
+            style={{ width: 150, justifyContent: "center" }}
+          >
+            <Palette size={14} />제작 썸네일 ({thumbnails.length})
           </button>
         </div>
         <div className="input-group" style={{ flex: 1, maxWidth: 300, marginLeft: "auto" }}>
@@ -235,6 +268,36 @@ export default function AssetsLibraryPage() {
                       </button>
                       <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => window.open(vid.url, "_blank")}>
                         <Globe size={13} /> 브라우저 열기
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 제작 썸네일 탭 */}
+          {tab === "thumbnails" && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+              {filteredThumbnails.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13, gridColumn: "1/-1" }}>검색 결과가 없습니다. 썸네일 스튜디오에서 제작 후 &apos;에셋 보관소에 저장&apos; 버튼을 눌러보세요.</div>}
+              {filteredThumbnails.map(t => (
+                <div key={t.id} className="card" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ position: "relative" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={t.dataUrl} alt={t.title} 
+                      style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+                    />
+                  </div>
+                  <div style={{ padding: 14 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16 }}>
+                      {new Date(t.createdAt).toLocaleDateString()}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn btn-ghost btn-sm" style={{ flex: 1, background: "rgba(255,255,255,0.05)" }} onClick={() => handleDownloadThumbnail(t)}>
+                        <Download size={13} /> 다운로드
                       </button>
                     </div>
                   </div>

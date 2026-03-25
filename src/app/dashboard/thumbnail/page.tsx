@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback, MouseEvent } from "react";
 import { 
   Download, Type, Image as ImageIcon, PaintBucket,
-  Trash2, Copy, Layers, Plus, ArrowUp, ArrowDown
+  Trash2, Copy, Layers, Plus, ArrowUp, ArrowDown, Archive
 } from "lucide-react";
 
 const CANVAS_W = 1920;
@@ -190,6 +190,7 @@ export default function ThumbnailStudioPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 캔버스 및 렌더링
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -518,6 +519,41 @@ export default function ThumbnailStudioPage() {
     }, 50);
   };
 
+  const saveToAssets = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    setIsSaving(true);
+    const tempSel = selectedId;
+    setSelectedId(null);
+    setHoverId(null);
+    
+    setTimeout(async () => {
+      draw();
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      try {
+        const res = await fetch("/api/thumbnails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `스튜디오 썸네일_${new Date().toISOString().slice(0, 10)}`,
+            dataUrl,
+            workspaceId: "test-workspace1"
+          })
+        });
+        if (res.ok) {
+           alert("에셋 보관소에 성공적으로 저장되었습니다!");
+        } else {
+           alert("저장 실패");
+        }
+      } catch {
+         alert("오류 발생");
+      }
+      setSelectedId(tempSel);
+      setIsSaving(false);
+    }, 50);
+  };
+
   const deleteSelected = () => {
     if (!selectedId) return;
     setLayers(prev => prev.filter(l => l.id !== selectedId));
@@ -631,9 +667,14 @@ export default function ThumbnailStudioPage() {
           </label>
         </div>
 
-        <button className="btn btn-brand" style={{ height: 48, marginTop: "auto", flexShrink: 0 }} onClick={downloadThumbnail}>
-          <Download size={16} /> 고화질 썸네일 다운로드
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "auto", flexShrink: 0 }}>
+          <button className="btn btn-ghost" style={{ height: 48, background: "rgba(255,255,255,0.05)" }} onClick={saveToAssets} disabled={isSaving}>
+            <Archive size={16} color="#34d399" /> {isSaving ? "저장 중..." : "에셋 보관소에 저장"}
+          </button>
+          <button className="btn btn-brand" style={{ height: 48 }} onClick={downloadThumbnail}>
+            <Download size={16} /> 고화질 썸네일 다운로드
+          </button>
+        </div>
       </div>
 
       {/* ── 중앙 캔버스 ── */}
