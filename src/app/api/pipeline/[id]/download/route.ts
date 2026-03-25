@@ -166,7 +166,8 @@ async function processDownloadJob(
       ]);
 
       const label = clip.label || "clip";
-      const filename = `KContent_${label}_${start.replace(/:/g, "")}.mp4`;
+      const ts = new Date().toISOString().slice(5,16).replace(/[-T:]/g, ""); // MMddHHmm
+      const filename = `KContent_${label}_${start.replace(/:/g, "")}_${ts}.mp4`;
 
       writeJobStatus(jobId, {
         status: "done", progress: 100,
@@ -215,7 +216,8 @@ async function processDownloadJob(
 
       writeJobStatus(jobId, { status: "merging", progress: 98, message: "병합 완료, 파일 준비 중..." });
 
-      const filename = `KContent_Full_${clips.length}clips.mp4`;
+      const ts = new Date().toISOString().slice(5,16).replace(/[-T:]/g, ""); // MMddHHmm
+      const filename = `KContent_Full_${clips.length}clips_${ts}.mp4`;
       writeJobStatus(jobId, {
         status: "done", progress: 100,
         message: "다운로드 완료!", filename, filePath: mergedPath,
