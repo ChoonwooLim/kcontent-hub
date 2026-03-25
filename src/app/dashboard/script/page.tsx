@@ -458,24 +458,52 @@ function ScriptPageInner() {
 
   // 저장된 대본 목록
   const [savedScripts, setSavedScripts] = useState<SavedScript[]>([]);
-  const [loadingSaved, setLoadingSaved] = useState(true); // 초기 로딩 true
+
   const [loadingScript, setLoadingScript] = useState<string | null>(null);
   const [showSessions, setShowSessions] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // 페이지 진입 시 저장된 대본 목록 로드 (1회만)
   useEffect(() => {
     fetchSavedScripts();
   }, []);
 
-  // URL 파라미터 처리
+  // 로컬스토리지 스냅샷 복구 (새로고침, 메뉴 이동 대비)
+  useEffect(() => {
+    const savedUi = localStorage.getItem("ai_script_engine_save");
+    if (savedUi) {
+       try {
+          const parsed = JSON.parse(savedUi);
+          if (parsed.url) setUrl(parsed.url);
+          if (parsed.result) setResult(parsed.result);
+          if (parsed.frames) setFrames(parsed.frames);
+          if (parsed.captures) setCaptures(parsed.captures);
+       } catch {}
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // 로컬스토리지 실시간 스냅샷 저장
+  useEffect(() => {
+    if (!isLoaded) return;
+    const timer = setTimeout(() => {
+      try {
+         localStorage.setItem("ai_script_engine_save", JSON.stringify({
+            url, result, frames, captures
+         }));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [url, result, frames, captures, isLoaded]);
+
+  // URL 파라미터 처리 (최상위 우선순위)
   useEffect(() => {
     const u = searchParams.get("url");
     if (u) setUrl(decodeURIComponent(u));
   }, [searchParams]);
 
   const fetchSavedScripts = async () => {
-    setLoadingSaved(true);
     try {
       const res = await fetch("/api/script");
       const data = await res.json();
@@ -487,7 +515,6 @@ function ScriptPageInner() {
     } catch (err) {
       console.error("[Script] 대본 목록 로드 실패:", err);
     }
-    finally { setLoadingSaved(false); }
   };
 
   // DB에서 대본 불러오기

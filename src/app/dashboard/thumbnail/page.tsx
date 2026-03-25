@@ -633,38 +633,6 @@ export default function ThumbnailStudioPage() {
           </p>
         </div>
 
-        <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>🔥 내 템플릿 / 스마트 템플릿</div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
-            저장했던 내 작업물이나 자동화 스타일을 클릭하여 디자인을 즉시 장착하세요.
-          </p>
-          <div style={{ 
-            display: "grid", gridTemplateColumns: "1fr", gap: 6, maxHeight: 280, overflowY: "auto", 
-            paddingRight: 6, background: "rgba(0,0,0,0.2)", padding: 8, borderRadius: 8
-          }}>
-             {customTemplates.map((tpl, i) => (
-                <button 
-                  key={`custom_${i}`} 
-                  className="btn btn-ghost" 
-                  style={{ justifyContent: "flex-start", fontSize: 12, background: "rgba(129, 140, 248, 0.15)", color: "#c7d2fe", height: "auto", padding: "10px 12px", textAlign: "left", border: "1px solid rgba(129, 140, 248, 0.3)" }} 
-                  onClick={() => applyTemplate(tpl)}
-                  title="내가 직접 저장했던 썸네일 재활용 템플릿입니다."
-                >
-                  {tpl.name}
-                </button>
-             ))}
-             {STYLE_TEMPLATES.map((tpl, i) => (
-                <button 
-                  key={i} 
-                  className="btn btn-ghost" 
-                  style={{ justifyContent: "flex-start", fontSize: 12, background: "rgba(255,255,255,0.05)", height: "auto", padding: "10px 12px", textAlign: "left" }} 
-                  onClick={() => applyTemplate(tpl)}
-                >
-                  {tpl.name}
-                </button>
-             ))}
-          </div>
-        </div>
 
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12 }}>배경 설정</div>
@@ -714,13 +682,13 @@ export default function ThumbnailStudioPage() {
         </div>
       </div>
 
-      {/* ── 중앙 캔버스 ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}>
+      {/* ── 중앙 캔버스 및 갤러리 영역 ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative", gap: 20 }}>
         {/* Aspect Ratio 16:9 Wrapper Container */}
         <div style={{ 
           width: "100%", maxWidth: 1000, aspectRatio: "16/9", 
           boxShadow: "0 20px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1)", 
-          borderRadius: 8, overflow: "hidden", position: "relative",
+          borderRadius: 8, overflow: "hidden", position: "relative", flexShrink: 0,
           background: "url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\"><rect width=\"10\" height=\"10\" fill=\"%23333\"/><rect x=\"10\" y=\"10\" width=\"10\" height=\"10\" fill=\"%23333\"/></svg>')",
           backgroundSize: "20px 20px"
         }}>
@@ -736,6 +704,70 @@ export default function ThumbnailStudioPage() {
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseUp}
           />
+        </div>
+
+        {/* ── 템플릿 갤러리 (하단) ── */}
+        <div className="card" style={{ width: "100%", maxWidth: 1000, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>🔥 템플릿 갤러리</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400 }}>스마트 템플릿 및 내 작업물 ({customTemplates.length + STYLE_TEMPLATES.length}종)</span>
+          </div>
+          <div style={{ 
+             display: "flex", overflowX: "auto", gap: 12, paddingBottom: 8,
+             scrollbarWidth: "thin"
+          }}>
+            {[...customTemplates, ...STYLE_TEMPLATES].map((tpl, i) => (
+              <div 
+                key={i}
+                onClick={() => applyTemplate(tpl as { name: string, layers: Partial<TextLayer>[] })}
+                style={{
+                  flexShrink: 0,
+                  height: 96, aspectRatio: "16/9", 
+                  background: "#1e1e24", borderRadius: 8, cursor: "pointer",
+                  border: "2px solid rgba(255,255,255,0.08)", overflow: "hidden",
+                  position: "relative",
+                  transition: "all 0.15s"
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.transform = "translateY(0)"; }}
+                title={tpl.name}
+              >
+                {/* 1920x1080 축소 이미지 변환 레이어 */}
+                <div style={{
+                    width: 1920, height: 1080, position: "absolute", top: 0, left: 0,
+                    transform: "scale(0.0888)", transformOrigin: "top left",
+                    pointerEvents: "none"
+                 }}>
+                    {tpl.layers.map((l: Record<string, unknown>, li: number) => {
+                       if (l.type === "text") {
+                         const lines = ((l.text as string) || "").split("\n");
+                         return (
+                           <div key={li} style={{
+                              position: "absolute", left: l.x as number, top: l.y as number,
+                              transform: "translate(-50%, -50%)",
+                              color: l.color as string, fontFamily: l.fontFamily as string,
+                              fontSize: l.fontSize as number, fontWeight: l.isBold ? "bold" : "normal", fontStyle: l.isItalic ? "italic" : "normal",
+                              textShadow: `${l.shadowBlur}px ${l.shadowBlur}px ${l.shadowColor}`,
+                              WebkitTextStroke: `${l.strokeWidth}px ${l.strokeColor}`,
+                              whiteSpace: "pre-wrap", textAlign: "center", lineHeight: "1.2"
+                           }}>
+                              {lines.map((line: string, lIdx: number) => <div key={lIdx}>{line}</div>)}
+                           </div>
+                         )
+                       }
+                       return null;
+                    })}
+                 </div>
+                 {/* 타이틀 오버레이 */}
+                 <div style={{ position: "absolute", top: 0, left: 0, background: tpl.name.includes("⭐️") ? "rgba(250, 204, 21, 0.9)" : "rgba(0,0,0,0.7)", color: tpl.name.includes("⭐️") ? "#000" : "white", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderBottomRightRadius: 8 }}>
+                    {tpl.name.includes("⭐️") ? "MY" : "PRESET"}
+                 </div>
+                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "20px 8px 6px", background: "linear-gradient(to top, rgba(0,0,0,0.95), transparent)", color: "white", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                   {tpl.name.replace("⭐️ ", "")}
+                 </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

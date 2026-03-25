@@ -162,9 +162,11 @@ export default function StudioPage() {
   const playerRef = useRef<YTPlayer | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  /* ── sessionStorage에서 대본 데이터 로드 ────────────────── */
+  /* ── sessionStorage(수동 이관) 및 localStorage(자동 복구) ── */
   useEffect(() => {
+    let handledBySession = false;
     try {
       const raw = sessionStorage.getItem("studio_data");
       if (raw) {
@@ -193,15 +195,48 @@ export default function StudioPage() {
           setVideoTitle(data.title || data.videoTitle || "");
         }
 
-        // script가 있으면 변환, 없으면 빈 배열 유지
         if (data.script?.length) {
           setSubs(scriptToSubs(data.script));
         }
 
         sessionStorage.removeItem("studio_data");
+        handledBySession = true;
       }
     } catch { /* ignore */ }
+
+    if (!handledBySession) {
+      try {
+        const rawLocal = localStorage.getItem("ai_subtitle_studio_save");
+        if (rawLocal) {
+           const parsed = JSON.parse(rawLocal);
+           if (parsed.videoId) setVideoId(parsed.videoId);
+           if (parsed.fileVideoUrl) setFileVideoUrl(parsed.fileVideoUrl);
+           if (parsed.videoTitle) setVideoTitle(parsed.videoTitle);
+           if (parsed.subs) setSubs(parsed.subs);
+           if (typeof parsed.preset === "number") setPreset(parsed.preset);
+           if (parsed.subtitleStep) setSubtitleStep(parsed.subtitleStep);
+           if (parsed.subtitleMethod) setSubtitleMethod(parsed.subtitleMethod);
+           if (parsed.capturedThumbnails) setCapturedThumbnails(parsed.capturedThumbnails);
+        }
+      } catch {}
+    }
+    
+    setIsLoaded(true);
   }, []);
+
+  /* ── 자동 백업 (localStorage) ───────────────────────────── */
+  useEffect(() => {
+    if (!isLoaded) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem("ai_subtitle_studio_save", JSON.stringify({
+          videoId, fileVideoUrl, videoTitle, subs, preset, 
+          subtitleStep, subtitleMethod, capturedThumbnails
+        }));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [videoId, fileVideoUrl, videoTitle, subs, preset, subtitleStep, subtitleMethod, capturedThumbnails, isLoaded]);
 
   /* ── HTML5 Video 플레이어 이벤트 ────────────────────────── */
   useEffect(() => {

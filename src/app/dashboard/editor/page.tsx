@@ -116,6 +116,36 @@ export default function EditorPage() {
   const [editEnd, setEditEnd] = useState("");
   const [editLabel, setEditLabel] = useState("하이라이트");
 
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // ── 로컬스토리지 스냅샷 복구 (메뉴 이동 시 상태 유지) ──
+  useEffect(() => {
+    const rawLocal = localStorage.getItem("ai_pipeline_engine_save");
+    if (rawLocal) {
+       try {
+          const parsed = JSON.parse(rawLocal);
+          if (parsed.selectedId) setSelectedId(parsed.selectedId);
+          if (parsed.newClipStart) setNewClipStart(parsed.newClipStart);
+          if (parsed.newClipEnd) setNewClipEnd(parsed.newClipEnd);
+          if (parsed.newClipLabel) setNewClipLabel(parsed.newClipLabel);
+       } catch {}
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // ── 로컬스토리지 스냅샷 자동 저장 ──
+  useEffect(() => {
+    if (!isLoaded) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem("ai_pipeline_engine_save", JSON.stringify({
+          selectedId, newClipStart, newClipEnd, newClipLabel
+        }));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [selectedId, newClipStart, newClipEnd, newClipLabel, isLoaded]);
+
   // 데이터 페치 + 파생 값
   const fetchVideos = useCallback(async () => {
     try {
