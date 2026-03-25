@@ -186,7 +186,8 @@ model StudioSession {
   step           String?              // "extracted" | "translated"
   method         String?              // "youtube_cc" | "whisper" | "whisper_fallback"
   preset         Int      @default(0) // 스타일 프리셋 인덱스
-  thumbnail      String?              // 썸네일 URL
+  thumbnail      String?  @db.Text    // 메인 썸네일 URL
+  thumbnailsJson String?  @db.Text    // 캡처된 다중 썸네일 JSON 배열
 
   workspaceId    String
   workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

@@ -29,6 +29,7 @@ export async function GET() {
         method: true,
         preset: true,
         thumbnail: true,
+        thumbnailsJson: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (!workspaceId) return NextResponse.json({ error: "워크스페이스를 찾을 수 없습니다." }, { status: 403 });
 
     const body = await req.json();
-    const { videoId, fileVideoUrl, videoTitle, subs, step, method, preset, thumbnail } = body;
+    const { videoId, fileVideoUrl, videoTitle, subs, step, method, preset, thumbnail, thumbnailsJson } = body;
 
     if (!subs || !Array.isArray(subs) || subs.length === 0) {
       return NextResponse.json({ error: "저장할 자막 데이터가 없습니다." }, { status: 400 });
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
           method: method || existing.method,
           preset: preset ?? existing.preset,
           thumbnail: thumbnail || existing.thumbnail,
+          thumbnailsJson: thumbnailsJson || existing.thumbnailsJson,
         },
       });
       return NextResponse.json({ session: updated, action: "updated" });
@@ -99,6 +101,7 @@ export async function POST(req: NextRequest) {
         method: method || null,
         preset: preset ?? 0,
         thumbnail: thumbnail || null,
+        thumbnailsJson: thumbnailsJson || null,
         workspaceId,
       },
     });

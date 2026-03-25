@@ -140,7 +140,10 @@ export default function StudioPage() {
   const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
   const [subtitleMethod, setSubtitleMethod] = useState<string | null>(null); // "youtube_cc" | "whisper" | "whisper_fallback"
   const [subtitleMessage, setSubtitleMessage] = useState<string | null>(null);
-  const [capturedThumbnail, setCapturedThumbnail] = useState<string | null>(null);
+  // 추가된 단일 썸네일 대신 배열 사용
+  const [capturedThumbnails, setCapturedThumbnails] = useState<string[]>([]);
+  const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number>(0);
+  const currentThumbnail = capturedThumbnails.length > 0 ? capturedThumbnails[selectedThumbnailIndex] : null;
 
   // 세션 저장/불러오기
   type SessionItem = {
@@ -384,7 +387,8 @@ export default function StudioPage() {
       fileVideoUrl: fileVideoUrl || "",
       videoTitle,
       subs,
-      capturedThumbnail
+      capturedThumbnails,
+      selectedThumbnailIndex
     }));
     const url = videoId
       ? `/dashboard/script?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`
@@ -420,7 +424,8 @@ export default function StudioPage() {
           step: subtitleStep,
           method: subtitleMethod,
           preset,
-          thumbnail: capturedThumbnail || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null),
+          thumbnail: currentThumbnail || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null),
+          thumbnailsJson: capturedThumbnails.length > 0 ? JSON.stringify(capturedThumbnails) : null,
         }),
       });
       const data = await res.json();
@@ -452,11 +457,15 @@ export default function StudioPage() {
       }
       setVideoTitle(s.videoTitle || "");
       setSubs(s.subs || []);
-      if (s.thumbnail?.startsWith("data:image")) {
-        setCapturedThumbnail(s.thumbnail);
-      } else {
-        setCapturedThumbnail(null);
+      
+      let loadedThumbs: string[] = [];
+      if (s.thumbnailsJson) {
+         try { loadedThumbs = JSON.parse(s.thumbnailsJson); } catch {}
+      } else if (s.thumbnail?.startsWith("data:image")) {
+         loadedThumbs = [s.thumbnail];
       }
+      setCapturedThumbnails(loadedThumbs);
+      setSelectedThumbnailIndex(0);
       setSubtitleStep(s.step || null);
       setSubtitleMethod(s.method || null);
       setPreset(s.preset ?? 0);
@@ -885,7 +894,9 @@ export default function StudioPage() {
                       const ctx = canvas.getContext("2d");
                       if (ctx) {
                         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-                        setCapturedThumbnail(canvas.toDataURL("image/jpeg", 0.8));
+                        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+                        setCapturedThumbnails(prev => [...prev, dataUrl]);
+                        setSelectedThumbnailIndex(capturedThumbnails.length); // 방금 추가된 것을 선택
                       }
                     }}>
                     <Camera size={13} style={{ marginRight: 4 }} /> 현재 화면 캡처
@@ -893,9 +904,9 @@ export default function StudioPage() {
                 )}
               </div>
               
-              {capturedThumbnail ? (
+              {currentThumbnail ? (
                  // eslint-disable-next-line @next/next/no-img-element
-                 <img src={capturedThumbnail} alt="thumbnail" style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }} />
+                 <img src={currentThumbnail} alt="thumbnail" style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }} />
               ) : videoId ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -906,6 +917,27 @@ export default function StudioPage() {
               ) : (
                 <div style={{ width: "100%", aspectRatio: "16/9", background: "var(--bg-input)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
                   우측 상단의 캡처 버튼을 눌러주세요
+                </div>
+              )}
+
+              {/* 추가된 썸네일 이미지 선택 리스트 */}
+              {capturedThumbnails.length > 0 && (
+                <div style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 12, paddingBottom: 4 }}>
+                  {capturedThumbnails.map((thumb, idx) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img 
+                      key={idx} 
+                      src={thumb} 
+                      alt={`cap_${idx}`} 
+                      onClick={() => setSelectedThumbnailIndex(idx)}
+                      style={{ 
+                        height: 40, aspectRatio: "16/9", objectFit: "cover", borderRadius: 4, cursor: "pointer", flexShrink: 0,
+                        border: selectedThumbnailIndex === idx ? "2px solid var(--brand)" : "1px solid var(--border-subtle)",
+                        opacity: selectedThumbnailIndex === idx ? 1 : 0.6,
+                        transition: "all 0.15s"
+                      }}
+                    />
+                  ))}
                 </div>
               )}
             </div>
