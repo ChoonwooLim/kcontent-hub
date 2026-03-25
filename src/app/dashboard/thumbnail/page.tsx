@@ -145,18 +145,78 @@ export default function ThumbnailStudioPage() {
     draw();
   }, [draw]);
 
-  // 에셋 보관소에서 넘어온 이미지 로드
+  // 폰트, 세션(보내기), 로컬스토리지 백업 데이터 로드
   useEffect(() => {
+    // 1. 구글 한국어 폰트 동적 로드 (검은고딕, 도현, 주아, 본고딕)
+    const fontLinkStr = "https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;700;900&display=swap";
+    let fontLink = document.querySelector(`link[href="${fontLinkStr}"]`);
+    if (!fontLink) {
+      fontLink = document.createElement("link");
+      (fontLink as HTMLLinkElement).rel = "stylesheet";
+      (fontLink as HTMLLinkElement).href = fontLinkStr;
+      document.head.appendChild(fontLink);
+    }
+
+    // 2. 데이터 우선순위: 세션 스토리지 (방금 에셋에서 보냄) > 로컬 스토리지 (이전 작업 복구)
     const storedBg = sessionStorage.getItem("thumbnail_bg");
     if (storedBg) {
+      setTimeout(() => setLayers([]), 0); // eslint warning 방지
       const img = new Image();
       img.src = storedBg;
       img.onload = () => {
         setBgImage(img);
         sessionStorage.removeItem("thumbnail_bg");
       };
+    } else {
+      // 로컬 스토리지에서 이전 작업 복구
+      try {
+        const saved = localStorage.getItem("thumbnail_studio_save");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.bgColor) setTimeout(() => setBgColor(parsed.bgColor), 0);
+          if (parsed.bgImageSrc) {
+            const img = new Image();
+            img.src = parsed.bgImageSrc;
+            img.onload = () => setBgImage(img);
+          }
+          if (parsed.layers && Array.isArray(parsed.layers)) {
+            const restoredLayers = parsed.layers.map((l: Record<string, unknown>) => {
+              if (l.type === "image") {
+                const img = new Image();
+                img.src = l.src as string;
+                return { ...l, imgElement: img };
+              }
+              return l;
+            });
+            setTimeout(() => setLayers(restoredLayers as Layer[]), 0);
+          }
+        }
+      } catch { }
     }
   }, []);
+
+  // 상태 변경 시마다 로컬스토리지 백업 (오토세이브)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const _layers = layers.map(l => {
+          if (l.type === "image") {
+            // imgElement는 직렬화 불가능하므로 제거 후 백업
+            const rest = { ...l } as Partial<ImageLayer>;
+            delete rest.imgElement;
+            return rest;
+          }
+          return l;
+        });
+        localStorage.setItem("thumbnail_studio_save", JSON.stringify({
+          layers: _layers,
+          bgColor,
+          bgImageSrc: bgImage ? bgImage.src : null
+        }));
+      } catch { }
+    }, 500); // 디바운스
+    return () => clearTimeout(timer);
+  }, [layers, bgColor, bgImage]);
 
   // 마우스 이벤트 헬퍼
   const getMousePos = (e: MouseEvent | React.MouseEvent) => {
@@ -463,17 +523,35 @@ export default function ThumbnailStudioPage() {
                     />
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>크기</div>
-                      <input type="number" className="input" style={{ width: "100%" }} value={(selectedLayer as TextLayer).fontSize} onChange={e => updateSelectedText("fontSize", Number(e.target.value))} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>글꼴 체형</div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button className={`btn btn-sm ${ (selectedLayer as TextLayer).isBold ? 'btn-brand' : 'btn-ghost' }`} style={{ flex: 1 }} onClick={() => updateSelectedText("isBold", !(selectedLayer as TextLayer).isBold)}><b>B</b></button>
-                        <button className={`btn btn-sm ${ (selectedLayer as TextLayer).isItalic ? 'btn-brand' : 'btn-ghost' }`} style={{ flex: 1, fontStyle: "italic" }} onClick={() => updateSelectedText("isItalic", !(selectedLayer as TextLayer).isItalic)}>I</button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>크기</div>
+                        <input type="number" className="input" style={{ width: "100%" }} value={(selectedLayer as TextLayer).fontSize} onChange={e => updateSelectedText("fontSize", Number(e.target.value))} />
                       </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>글꼴 체형</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className={`btn btn-sm ${ (selectedLayer as TextLayer).isBold ? 'btn-brand' : 'btn-ghost' }`} style={{ flex: 1 }} onClick={() => updateSelectedText("isBold", !(selectedLayer as TextLayer).isBold)}><b>B</b></button>
+                          <button className={`btn btn-sm ${ (selectedLayer as TextLayer).isItalic ? 'btn-brand' : 'btn-ghost' }`} style={{ flex: 1, fontStyle: "italic" }} onClick={() => updateSelectedText("isItalic", !(selectedLayer as TextLayer).isItalic)}>I</button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>사용 폰트 (유튜브 추천 서체)</div>
+                      <select 
+                        className="input" 
+                        style={{ width: "100%", padding: "6px 10px", fontSize: 13, cursor: "pointer", background: "rgba(255,255,255,0.05)" }}
+                        value={(selectedLayer as TextLayer).fontFamily}
+                        onChange={e => updateSelectedText("fontFamily", e.target.value)}
+                      >
+                        <option value="var(--font-pretendard), sans-serif">프리텐다드 (기본/모던)</option>
+                        <option value="'Black Han Sans', sans-serif">검은고딕 (매우 두꺼움/어그로용)</option>
+                        <option value="'Do Hyeon', sans-serif">도현체 (유튜브 단골/귀여운 굵은글씨)</option>
+                        <option value="'Jua', sans-serif">주아체 (둥글둥글/친근함)</option>
+                        <option value="'Noto Sans KR', sans-serif">본고딕 (정갈함/가독성)</option>
+                      </select>
                     </div>
                   </div>
 
