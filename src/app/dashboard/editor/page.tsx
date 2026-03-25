@@ -361,8 +361,7 @@ export default function EditorPage() {
     }
   };
 
-  // stage 강제 이동
-  const handleAdvance = async () => processAction("advance");
+  // stage 강제 이동 (사용되지 않음)
 
   // HD 다운로드 상태
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -495,7 +494,7 @@ export default function EditorPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1200 }}>
       <div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>영상 편집기</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>영상 변환엔진</h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
           저장된 영상 선택 → 핵심 구간 클립 마킹 → 자막 추출 → 한글 변환 → AI 대본 생성 (7단계 파이프라인)
         </p>
