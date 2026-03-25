@@ -172,6 +172,27 @@ model Script {
   updatedAt      DateTime @updatedAt
 }
 
+// 자막 스튜디오 세션 저장 (작업 중단 후 복원용)
+model StudioSession {
+  id             String   @id @default(cuid())
+  name           String               // 세션 이름 (영상 제목 기반)
+  videoId        String?              // YouTube 영상 ID
+  fileVideoUrl   String?              // 서버 파일 URL
+  videoTitle     String               // 영상 제목
+  subsJson       String   @db.Text    // SubLine[] JSON — 자막 데이터
+  subCount       Int      @default(0) // 자막 수
+  step           String?              // "extracted" | "translated"
+  method         String?              // "youtube_cc" | "whisper" | "whisper_fallback"
+  preset         Int      @default(0) // 스타일 프리셋 인덱스
+  thumbnail      String?              // 썸네일 URL
+
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 // ---------------------------------------------------------------------
 // NextAuth & Multi-tenant (SaaS) Models
 // ---------------------------------------------------------------------
@@ -241,6 +262,7 @@ model Workspace {
   videos      PipelineVideo[]
   channels    Channel[]
   scripts     Script[]
+  studioSessions StudioSession[]
   downloadedFiles DownloadedFile[]
   hunterSearches  HunterSearch[]
 

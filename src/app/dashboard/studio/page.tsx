@@ -2,7 +2,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
-  Palette, Send, Check, Link2, Loader, AlertCircle
+  Palette, Send, Check, Link2, Loader, AlertCircle,
+  Save, FolderOpen, Trash2, Clock
 } from "lucide-react";
 
 /* ── 타입 ────────────────────────────────────────────────── */
@@ -138,6 +139,17 @@ export default function StudioPage() {
   const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
   const [subtitleMethod, setSubtitleMethod] = useState<string | null>(null); // "youtube_cc" | "whisper" | "whisper_fallback"
   const [subtitleMessage, setSubtitleMessage] = useState<string | null>(null);
+
+  // 세션 저장/불러오기
+  type SessionItem = {
+    id: string; name: string; videoId?: string; fileVideoUrl?: string;
+    videoTitle: string; subCount: number; step?: string; method?: string;
+    preset: number; thumbnail?: string; updatedAt: string;
+  };
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [showSessions, setShowSessions] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);  // HTML5 video 플레이어
   const isFileMode = !!fileVideoUrl && !videoId;  // 파일 모드 여부
@@ -367,6 +379,88 @@ export default function StudioPage() {
     setTimeout(() => setExported(false), 2000);
   };
 
+  /* ── 세션 목록 로드 ───────────────────────────────────── */
+  const loadSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/studio/session");
+      const data = await res.json();
+      if (data.sessions) setSessions(data.sessions);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  /* ── 세션 저장 ───────────────────────────────────────── */
+  const handleSaveSession = async () => {
+    if (!subs.length) return;
+    setSessionLoading(true);
+    setSaveMessage(null);
+    try {
+      const res = await fetch("/api/studio/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId: videoId || null,
+          fileVideoUrl: fileVideoUrl || null,
+          videoTitle,
+          subs,
+          step: subtitleStep,
+          method: subtitleMethod,
+          preset,
+          thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaveMessage(data.action === "updated" ? "✓ 세션 업데이트 완료" : "✓ 세션 저장 완료");
+        loadSessions();
+        setTimeout(() => setSaveMessage(null), 3000);
+      } else {
+        setSaveMessage(`✗ ${data.error}`);
+      }
+    } catch (e) { setSaveMessage(`✗ ${String(e)}`); }
+    finally { setSessionLoading(false); }
+  };
+
+  /* ── 세션 불러오기 ─────────────────────────────────────── */
+  const handleLoadSession = async (sessionId: string) => {
+    setSessionLoading(true);
+    try {
+      const res = await fetch(`/api/studio/session/${sessionId}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      const s = data.session;
+      if (s.videoId) {
+        setVideoId(s.videoId);
+        setFileVideoUrl("");
+      } else if (s.fileVideoUrl) {
+        setFileVideoUrl(s.fileVideoUrl);
+        setVideoId("");
+      }
+      setVideoTitle(s.videoTitle || "");
+      setSubs(s.subs || []);
+      setSubtitleStep(s.step || null);
+      setSubtitleMethod(s.method || null);
+      setPreset(s.preset ?? 0);
+      setSubtitleError(null);
+      setSubtitleMessage(null);
+      setSelectedSub(null);
+      setCurrentTime(0);
+      setShowSessions(false);
+    } catch { /* ignore */ }
+    finally { setSessionLoading(false); }
+  };
+
+  /* ── 세션 삭제 ───────────────────────────────────────── */
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("이 세션을 삭제하시겠습니까?")) return;
+    try {
+      await fetch(`/api/studio/session/${sessionId}`, { method: "DELETE" });
+      loadSessions();
+    } catch { /* ignore */ }
+  };
+
   /* ── 현재 활성 자막 ──────────────────────────────────── */
   const activeSub = subs.find(s => currentTime >= s.start && currentTime <= s.end);
   const p = FONT_PRESETS[preset];
@@ -375,12 +469,110 @@ export default function StudioPage() {
   /* ── 렌더 ─────────────────────────────────────────────── */
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 1100 }}>
-      <div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>편집 스튜디오</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          YouTube 원본 영상 재생 · 자막 실시간 싱크 · 스타일 편집 · SRT/VTT 내보내기
-        </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>편집 스튜디오</h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            YouTube 원본 영상 재생 · 자막 실시간 싱크 · 스타일 편집 · SRT/VTT 내보내기
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ gap: 6, fontSize: 12 }}
+            onClick={() => setShowSessions(!showSessions)}
+          >
+            <FolderOpen size={14} />
+            저장된 작업 ({sessions.length})
+          </button>
+          <button
+            className="btn btn-brand btn-sm"
+            style={{ gap: 6, fontSize: 12 }}
+            disabled={subs.length === 0 || sessionLoading}
+            onClick={handleSaveSession}
+          >
+            {sessionLoading
+              ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />저장 중...</>
+              : <><Save size={14} />현재 작업 저장</>
+            }
+          </button>
+        </div>
       </div>
+      {saveMessage && (
+        <div style={{
+          fontSize: 11, padding: "6px 12px", borderRadius: 6,
+          color: saveMessage.startsWith("✓") ? "#34d399" : "#f87171",
+          background: saveMessage.startsWith("✓") ? "rgba(52,211,153,0.06)" : "rgba(239,68,68,0.06)",
+          border: `1px solid ${saveMessage.startsWith("✓") ? "rgba(52,211,153,0.2)" : "rgba(239,68,68,0.2)"}`,
+        }}>
+          {saveMessage}
+        </div>
+      )}
+
+      {/* 저장된 세션 목록 */}
+      {showSessions && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            <FolderOpen size={14} color="#818cf8" />
+            저장된 작업 목록
+          </div>
+          {sessions.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "20px 0", textAlign: "center" }}>
+              저장된 작업이 없습니다. 자막 추출 후 &quot;현재 작업 저장&quot; 버튼을 클릭하세요.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
+              {sessions.map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => handleLoadSession(s.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                    borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                    border: "1px solid var(--border-default)",
+                    background: "var(--bg-elevated)",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.background = "var(--brand-dim)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-default)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
+                >
+                  {/* 썸네일 */}
+                  {s.thumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.thumbnail} alt="" style={{ width: 60, height: 34, borderRadius: 4, objectFit: "cover" }} />
+                  ) : (
+                    <div style={{ width: 60, height: 34, borderRadius: 4, background: "var(--bg-input)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Play size={14} color="var(--text-muted)" />
+                    </div>
+                  )}
+                  {/* 정보 */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {s.videoTitle || s.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
+                      <span>📝 {s.subCount}개 자막</span>
+                      <span>{s.step === "translated" ? "✓ 번역완료" : s.step === "extracted" ? "✓ 추출완료" : ""}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                        <Clock size={9} />
+                        {new Date(s.updatedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  </div>
+                  {/* 삭제 */}
+                  <button
+                    className="btn-icon"
+                    onClick={(e) => handleDeleteSession(s.id, e)}
+                    style={{ opacity: 0.4, padding: 4 }}
+                    title="세션 삭제"
+                  >
+                    <Trash2 size={13} color="#f87171" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* URL 입력 (영상 미로드 시 표시) */}
       {!videoId && (
