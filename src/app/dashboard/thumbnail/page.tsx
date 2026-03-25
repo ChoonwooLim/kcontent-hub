@@ -41,6 +41,147 @@ interface ImageLayer extends BaseLayer {
 
 type Layer = TextLayer | ImageLayer;
 
+const STYLE_TEMPLATES = [
+  {
+    name: "1. 💥충격! 대반전 (어그로형)",
+    layers: [
+      { text: "상상도 못한", fontSize: 180, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 15, x: 960, y: 780, shadowBlur: 20, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "충격적인 결말?!", fontSize: 260, isBold: true, isItalic: true, color: "#FFEB3B", strokeColor: "#000000", strokeWidth: 30, x: 960, y: 950, shadowBlur: 40, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  },
+  {
+    name: "2. 🚨긴급 속보 (뉴스형)",
+    layers: [
+      { text: "[긴급 속보]", fontSize: 130, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000000", strokeWidth: 8, x: 280, y: 150, shadowBlur: 20, shadowColor: "black", fontFamily: "var(--font-pretendard), sans-serif" },
+      { text: "결국 사태가 일어났다...", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#D32F2F", strokeWidth: 35, x: 960, y: 900, shadowBlur: 20, shadowColor: "black", fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  },
+  {
+    name: "3. 🎙️감성 브이로그 (일상형)",
+    layers: [
+      { text: "나만의 소소한 주말 기록", fontSize: 140, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 50, shadowColor: "black", x: 960, y: 540, fontFamily: "var(--font-pretendard), sans-serif" },
+      { text: "ep.01", fontSize: 80, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 10, shadowColor: "black", x: 960, y: 720, fontFamily: "var(--font-pretendard), sans-serif" }
+    ]
+  },
+  {
+    name: "4. 🎤아이돌 직캠 (팬튜브형)",
+    layers: [
+      { text: "미모가 미쳤습니다", fontSize: 240, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#EC4899", strokeWidth: 30, shadowBlur: 80, shadowColor: "#EC4899", x: 960, y: 920, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "레전드 찍은 역대급 무대", fontSize: 140, isBold: true, isItalic: false, color: "#FFD700", strokeColor: "#000000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 150, fontFamily: "'Do Hyeon', sans-serif" }
+    ]
+  },
+  {
+    name: "5. 🍲먹방 투어 (음식형)",
+    layers: [
+      { text: "이 가격에 이 퀄리티?!", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#F97316", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
+      { text: "인생 맛집 찾았습니다", fontSize: 250, isBold: true, isItalic: false, color: "#FFED4A", strokeColor: "#000000", strokeWidth: 35, shadowBlur: 50, shadowColor: "black", x: 960, y: 880, fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  },
+  {
+    name: "6. ✨리뷰/테크 (IT형)",
+    layers: [
+      { text: "이거 안 사면 후회합니다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#3B82F6", strokeWidth: 20, shadowBlur: 50, shadowColor: "#3B82F6", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "장단점 솔직 리뷰", fontSize: 110, isBold: true, isItalic: false, color: "#60A5FA", strokeColor: "#000", strokeWidth: 8, shadowBlur: 0, shadowColor: "black", x: 960, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
+    ]
+  },
+  {
+    name: "7. 🎬영화 요약 (스토리형)",
+    layers: [
+      { text: "외계인이 지구에 왔다가", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 20, shadowBlur: 50, shadowColor: "black", x: 960, y: 780, fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "초토화 되어버린 이유", fontSize: 240, isBold: true, isItalic: false, color: "#FF4500", strokeColor: "#000", strokeWidth: 30, shadowBlur: 50, shadowColor: "black", x: 960, y: 960, fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  },
+  {
+    name: "8. ✈️여행/핫플 (꿀팁형)",
+    layers: [
+      { text: "한국인 99%가 모르는", fontSize: 150, isBold: true, isItalic: false, color: "#FFFF00", strokeColor: "#000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 200, fontFamily: "'Jua', sans-serif" },
+      { text: "숨겨진 지상낙원 어딜까?", fontSize: 210, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 20, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" }
+    ]
+  },
+  {
+    name: "9. 📈주식/재테크 (경제형)",
+    layers: [
+      { text: "내일부터 무조건 오릅니다", fontSize: 220, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#E11D48", strokeWidth: 26, shadowBlur: 40, shadowColor: "#E11D48", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "전문가 긴급 분석", fontSize: 120, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 280, y: 180, fontFamily: "var(--font-pretendard), sans-serif" }
+    ]
+  },
+  {
+    name: "10. 🎮게임 하이라이트 (매드무비)",
+    layers: [
+      { text: "1 대 5를 이겨버린다고?", fontSize: 240, isBold: true, isItalic: true, color: "#4ADE80", strokeColor: "#000", strokeWidth: 35, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "#매드무비 #레전드", fontSize: 100, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 960, y: 180, fontFamily: "'Do Hyeon', sans-serif" }
+    ]
+  },
+  {
+    name: "11. 🐶동물/반려견 (귀요미형)",
+    layers: [
+      { text: "주인 몰래 간식 훔쳐먹다", fontSize: 180, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#F472B6", strokeWidth: 20, shadowBlur: 30, shadowColor: "black", x: 960, y: 780, fontFamily: "'Jua', sans-serif" },
+      { text: "딱 걸린 댕댕이 ㅋㅋㅋ", fontSize: 240, isBold: true, isItalic: false, color: "#FDE047", strokeColor: "#000", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 960, fontFamily: "'Jua', sans-serif" }
+    ]
+  },
+  {
+    name: "12. 💬인터뷰/대담 (인물집중형)",
+    layers: [
+      { text: `"제가 사실 그때..."`, fontSize: 170, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 50, shadowColor: "black", x: 960, y: 760, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "드디어 밝혀진 진짜 이유", fontSize: 130, isBold: true, isItalic: false, color: "#D1D5DB", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 60, shadowColor: "black", x: 960, y: 920, fontFamily: "var(--font-pretendard), sans-serif" }
+    ]
+  },
+  {
+    name: "13. 🔥폭로/논란 (진실공방)",
+    layers: [
+      { text: "더 이상 못 참겠습니다", fontSize: 260, isBold: true, isItalic: false, color: "#E11D48", strokeColor: "#FFFFFF", strokeWidth: 20, shadowBlur: 60, shadowColor: "black", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  },
+  {
+    name: "14. 👻공포/미스터리 (납량특집)",
+    layers: [
+      { text: "절대 혼자 보지 마세요", fontSize: 190, isBold: true, isItalic: false, color: "#991B1B", strokeColor: "#000", strokeWidth: 15, shadowBlur: 80, shadowColor: "#EF4444", x: 960, y: 540, fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "폐가에서 찍힌 기묘한 형체", fontSize: 140, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 30, shadowColor: "black", x: 960, y: 880, fontFamily: "'Noto Sans KR', sans-serif" }
+    ]
+  },
+  {
+    name: "15. 😂유머/짤방 (숏폼감성)",
+    layers: [
+      { text: "아 ㅋㅋㅋㅋㅋㅋ", fontSize: 300, isBold: true, isItalic: true, color: "#FFFF00", strokeColor: "#000000", strokeWidth: 40, shadowBlur: 20, shadowColor: "black", x: 960, y: 540, fontFamily: "'Jua', sans-serif" }
+    ]
+  },
+  {
+    name: "16. 💡강좌/꿀팁 (교육형)",
+    layers: [
+      { text: "엑셀 단축키 딱 3개면", fontSize: 160, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 20, shadowColor: "black", x: 960, y: 780, fontFamily: "'Noto Sans KR', sans-serif" },
+      { text: "퇴근 시간이 2시간 빨라짐", fontSize: 200, isBold: true, isItalic: false, color: "#34D399", strokeColor: "#000", strokeWidth: 20, shadowBlur: 30, shadowColor: "black", x: 960, y: 950, fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  },
+  {
+    name: "17. 💄뷰티/패션 (세련된 스타일)",
+    layers: [
+      { text: "올 봄 유행할 메이크업", fontSize: 180, isBold: true, isItalic: false, color: "#FDA4AF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 40, shadowColor: "rgba(0,0,0,0.6)", x: 960, y: 800, fontFamily: "'Do Hyeon', sans-serif" },
+      { text: "퍼스널 컬러 완벽 가이드", fontSize: 140, isBold: false, isItalic: false, color: "#FFFFFF", strokeColor: "transparent", strokeWidth: 0, shadowBlur: 20, shadowColor: "rgba(0,0,0,0.6)", x: 960, y: 960, fontFamily: "var(--font-pretendard), sans-serif" }
+    ]
+  },
+  {
+    name: "18. 💪운동/다이어트 (강렬한 동기부여)",
+    layers: [
+      { text: "한 달 만에 -10kg?!", fontSize: 220, isBold: true, isItalic: true, color: "#FDE047", strokeColor: "#000", strokeWidth: 25, shadowBlur: 30, shadowColor: "black", x: 960, y: 240, fontFamily: "'Black Han Sans', sans-serif" },
+      { text: "기적의 홈트 루틴 대공개", fontSize: 150, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 20, shadowColor: "black", x: 960, y: 920, fontFamily: "'Do Hyeon', sans-serif" }
+    ]
+  },
+  {
+    name: "19. 🚗자동차/드라이브 (액션형)",
+    layers: [
+      { text: "풀옵션 G90 타봤습니다", fontSize: 190, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#1E3A8A", strokeWidth: 25, shadowBlur: 40, shadowColor: "black", x: 960, y: 880, fontFamily: "'Jua', sans-serif" },
+      { text: "승차감 실화입니까?", fontSize: 130, isBold: true, isItalic: true, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 10, shadowBlur: 20, shadowColor: "black", x: 400, y: 150, fontFamily: "'Noto Sans KR', sans-serif" }
+    ]
+  },
+  {
+    name: "20. 🎉이벤트/당첨 (어그로 극대화)",
+    layers: [
+      { text: "구독자 10만명 달성!", fontSize: 150, isBold: true, isItalic: false, color: "#FFFFFF", strokeColor: "#000", strokeWidth: 15, shadowBlur: 30, shadowColor: "black", x: 960, y: 220, fontFamily: "'Jua', sans-serif" },
+      { text: "맥북 아이패드 쏩니다!!", fontSize: 260, isBold: true, isItalic: true, color: "#FF0000", strokeColor: "#FFFFFF", strokeWidth: 30, shadowBlur: 60, shadowColor: "rgba(255,0,0,0.5)", x: 960, y: 900, fontFamily: "'Black Han Sans', sans-serif" }
+    ]
+  }
+];
+
 export default function ThumbnailStudioPage() {
   // 상태 관리
   const [layers, setLayers] = useState<Layer[]>([]);
@@ -312,6 +453,20 @@ export default function ThumbnailStudioPage() {
     setSelectedId(id);
   };
 
+  const applyTemplate = (tpl: { name: string, layers: Partial<TextLayer>[] }) => {
+    if (layers.some(l => l.type === "text")) {
+       if (!confirm("기존 텍스트 레이어들이 모두 지워지고 새로운 템플릿이 덮어씌워집니다.\n계속하시겠습니까? (배경은 유지됩니다)")) return;
+    }
+    const nonText = layers.filter(l => l.type !== "text");
+    const newTextLayers = tpl.layers.map((l, i) => ({
+      id: `text_tpl_${Date.now()}_${i}`,
+      type: "text" as const,
+      ...l
+    } as TextLayer));
+    setLayers([...nonText, ...newTextLayers]);
+    if (newTextLayers.length > 0) setSelectedId(newTextLayers[0].id);
+  };
+
   const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -407,13 +562,35 @@ export default function ThumbnailStudioPage() {
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 40px)", gap: 24, paddingTop: 10, paddingBottom: 10, maxWidth: 1600 }}>
-      {/* ── 좌측 툴바 ── */}
-      <div style={{ width: 260, flexShrink: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* ── 좌초 툴바 ── */}
+      <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", paddingRight: 4 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em" }}>썸네일 스튜디오</h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
             유튜브용 16:9 썸네일을 <br/>마우스 드래그로 손쉽게 제작하세요.
           </p>
+        </div>
+
+        <div className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>🔥 스마트 템플릿 (20종)</div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.4 }}>
+            원하는 스타일을 클릭하면 멋진 텍스트 디자인 뭉치가 즉시 도화지에 장착됩니다.
+          </p>
+          <div style={{ 
+            display: "grid", gridTemplateColumns: "1fr", gap: 6, maxHeight: 280, overflowY: "auto", 
+            paddingRight: 6, background: "rgba(0,0,0,0.2)", padding: 8, borderRadius: 8
+          }}>
+             {STYLE_TEMPLATES.map((tpl, i) => (
+                <button 
+                  key={i} 
+                  className="btn btn-ghost" 
+                  style={{ justifyContent: "flex-start", fontSize: 12, background: "rgba(255,255,255,0.05)", height: "auto", padding: "10px 12px", textAlign: "left" }} 
+                  onClick={() => applyTemplate(tpl)}
+                >
+                  {tpl.name}
+                </button>
+             ))}
+          </div>
         </div>
 
         <div className="card" style={{ padding: 16 }}>
@@ -436,30 +613,26 @@ export default function ThumbnailStudioPage() {
         </div>
 
         <div className="card" style={{ padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12 }}>텍스트 템플릿</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.05)" }} onClick={() => addText("title")}>
-              <Type size={14} color="#818cf8" /> 메인 타이틀 (대형)
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12 }}>내맘대로 추가 요소</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.05)", flex: 1, height: 32, fontSize: 12, padding: "0 8px" }} onClick={() => addText("title")}>
+              <Type size={12} color="#818cf8" /> 메인 타이틀
             </button>
-            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.05)" }} onClick={() => addText("accent")}>
-              <Type size={14} color="#facc15" /> 노란 강조 텍스트
+            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.05)", flex: 1, height: 32, fontSize: 12, padding: "0 8px" }} onClick={() => addText("accent")}>
+              <Type size={12} color="#facc15" /> 노란 강조
             </button>
-            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.05)" }} onClick={() => addText("subtitle")}>
-              <Type size={14} color="var(--text-muted)" /> 서브 자막
+            <button className="btn btn-ghost" style={{ background: "rgba(255,255,255,0.05)", flex: 1, height: 32, fontSize: 12, padding: "0 8px", minWidth: 100 }} onClick={() => addText("subtitle")}>
+              <Type size={12} color="var(--text-muted)" /> 서브 자막
             </button>
           </div>
-        </div>
-
-        <div className="card" style={{ padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12 }}>추가 요소</div>
           <label className="btn btn-ghost" style={{ justifyContent: "center", cursor: "pointer" }}>
-            <Plus size={14} /> 레이어 이미지 추가 (스티커)
+            <Plus size={14} /> 자유 이미지 추가 (스티커)
             <input type="file" accept="image/*" hidden onChange={handleImgUpload} />
           </label>
         </div>
 
-        <button className="btn btn-brand" style={{ height: 48, marginTop: "auto" }} onClick={downloadThumbnail}>
-          <Download size={16} /> 썸네일 PNG 다운로드
+        <button className="btn btn-brand" style={{ height: 48, marginTop: "auto", flexShrink: 0 }} onClick={downloadThumbnail}>
+          <Download size={16} /> 고화질 썸네일 다운로드
         </button>
       </div>
 
