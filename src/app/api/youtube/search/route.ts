@@ -106,10 +106,14 @@ const LANG_OPTIONS: { code: string; label: string; relevance: string }[] = [
 
 export async function POST(req: NextRequest) {
   try {
-    const { maxSubs = 50000, maxViews = 20000, dayRange = 7, niche = "전체", lang = "all", keywords: customInput = "" } = await req.json();
+    const { maxSubs = 50000, maxViews = 20000, minSubs = 0, minViews = 0, dayRange = 7, niche = "전체", lang = "all", keywords: customInput = "" } = await req.json();
     // 상한값 0 = 무제한 (구독자·조회수·업로드 기간)
     const subsCap = Number(maxSubs) > 0 ? Number(maxSubs) : 0;
     const viewsCap = Number(maxViews) > 0 ? Number(maxViews) : 0;
+    const subsMin = Number(minSubs) > 0 ? Number(minSubs) : 0;      // 이상 조건 (0 = 제한 없음)
+    const viewsMin = Number(minViews) > 0 ? Number(minViews) : 0;
+    if (subsCap > 0 && subsMin > subsCap) return NextResponse.json({ error: "구독자 최소값이 최대값보다 큽니다. 범위를 다시 지정하세요." }, { status: 400 });
+    if (viewsCap > 0 && viewsMin > viewsCap) return NextResponse.json({ error: "조회수 최소값이 최대값보다 큽니다. 범위를 다시 지정하세요." }, { status: 400 });
     const dayCap = Number(dayRange) > 0 ? Number(dayRange) : 0;
 
     // YouTube API 키 — VIP/관리자: 서버 공용 키, 일반 회원: 본인 키
@@ -222,6 +226,8 @@ export async function POST(req: NextRequest) {
       // 필터: 구독자 · 조회수 · 기간 상한 (0 = 무제한)
       if (subsCap > 0 && subs > subsCap) continue;
       if (viewsCap > 0 && views > viewsCap) continue;
+      if (subsMin > 0 && subs < subsMin) continue;
+      if (viewsMin > 0 && views < viewsMin) continue;
       if (dayCap > 0 && daysAgo > dayCap) continue;
 
       // 필터: 임베드 불가 또는 한국 지역 제한 영상 제외

@@ -22,6 +22,8 @@ export async function GET() {
         niche: latest.niche,
         maxSubs: latest.maxSubs,
         maxViews: latest.maxViews,
+        minSubs: latest.minSubs,
+        minViews: latest.minViews,
         dayRange: latest.dayRange,
         lang: latest.lang,
         keywords: latest.keywords ?? "",
@@ -35,7 +37,7 @@ export async function GET() {
 // POST /api/hunter/history — 검색 결과 저장
 export async function POST(req: NextRequest) {
   try {
-    const { niche, maxSubs, maxViews, dayRange, lang, videos, keywords } = await req.json();
+    const { niche, maxSubs, maxViews, minSubs, minViews, dayRange, lang, videos, keywords } = await req.json();
 
     const ws = await prisma.workspace.findFirst();
     if (!ws) return NextResponse.json({ error: "No workspace" }, { status: 403 });
@@ -45,6 +47,8 @@ export async function POST(req: NextRequest) {
         niche: niche || "전체",
         maxSubs: typeof maxSubs === "number" ? maxSubs : 50000,   // 0 = 무제한
         maxViews: typeof maxViews === "number" ? maxViews : 20000,
+        minSubs: typeof minSubs === "number" ? minSubs : 0,
+        minViews: typeof minViews === "number" ? minViews : 0,
         dayRange: typeof dayRange === "number" ? dayRange : 7,
         lang: lang || "all",
         keywords: typeof keywords === "string" && keywords.trim() ? keywords.trim().slice(0, 500) : null,

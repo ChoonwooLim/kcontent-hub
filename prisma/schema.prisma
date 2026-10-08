@@ -84,8 +84,10 @@ model DownloadedFile {
 model HunterSearch {
   id            String   @id @default(cuid())
   niche         String   @default("전체")
-  maxSubs       Int      @default(50000)
-  maxViews      Int      @default(20000)
+  maxSubs       Int      @default(50000)   // 0 = 무제한
+  maxViews      Int      @default(20000)   // 0 = 무제한
+  minSubs       Int      @default(0)       // 0 = 제한 없음 (이상 조건)
+  minViews      Int      @default(0)
   dayRange      Int      @default(7)
   lang          String   @default("all")
   keywords      String?              // 직접 입력 키워드 (niche="custom" 일 때, 쉼표 구분)

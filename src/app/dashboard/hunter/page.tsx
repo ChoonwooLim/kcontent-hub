@@ -9,6 +9,28 @@ import {
 
 import { NICHE_GROUPS, NICHES, MAX_CUSTOM_KEYWORDS } from "@/lib/niches";
 
+// 구독자·조회수 범위 옵션 (값 0 = 제한 없음/무제한)
+const MIN_OPTIONS = [
+  { value: "0", label: "제한 없음" },
+  { value: "1000", label: "1천 이상" },
+  { value: "5000", label: "5천 이상" },
+  { value: "10000", label: "1만 이상" },
+  { value: "50000", label: "5만 이상" },
+  { value: "100000", label: "10만 이상" },
+  { value: "500000", label: "50만 이상" },
+  { value: "1000000", label: "100만 이상" },
+];
+const MAX_OPTIONS = [
+  { value: "5000", label: "5천 이하" },
+  { value: "10000", label: "1만 이하" },
+  { value: "20000", label: "2만 이하" },
+  { value: "50000", label: "5만 이하" },
+  { value: "100000", label: "10만 이하" },
+  { value: "500000", label: "50만 이하" },
+  { value: "1000000", label: "100만 이하" },
+  { value: "0", label: "무제한" },
+];
+
 const LANGS = [
   { code: "all", label: "🌐 전체 언어" },
   { code: "en",  label: "🇺🇸 English" },
@@ -233,8 +255,10 @@ export default function HunterPage() {
   const [customKeywords, setCustomKeywords] = useState("");            // 직접 입력 키워드 (쉼표 구분)
   const [filterNiche, setFilterNiche] = useState("전체");              // 결과 목록 필터 (수집 조건과 분리)
   const [lastScan, setLastScan] = useState<{ title: string; keywords: string[]; langFallback?: string; searchEngine?: string; lang?: string } | null>(null);
-  const [maxSubs, setMaxSubs] = useState("50000");
-  const [maxViews, setMaxViews] = useState("20000");
+  const [maxSubs, setMaxSubs] = useState("50000");     // 0 = 무제한
+  const [maxViews, setMaxViews] = useState("20000");   // 0 = 무제한
+  const [minSubs, setMinSubs] = useState("0");         // 0 = 제한 없음 (이상 조건)
+  const [minViews, setMinViews] = useState("0");
   const [dayRange, setDayRange] = useState("7");
   const [searchLang, setSearchLang] = useState("all");
   const [scanning, setScanning] = useState(false);
@@ -259,6 +283,8 @@ export default function HunterPage() {
           // 0 = 무제한 이므로 || 로 기본값을 덮어쓰지 않는다
           setMaxSubs(String(typeof data.searchParams.maxSubs === "number" ? data.searchParams.maxSubs : 50000));
           setMaxViews(String(typeof data.searchParams.maxViews === "number" ? data.searchParams.maxViews : 20000));
+          setMinSubs(String(typeof data.searchParams.minSubs === "number" ? data.searchParams.minSubs : 0));
+          setMinViews(String(typeof data.searchParams.minViews === "number" ? data.searchParams.minViews : 0));
           setDayRange(String(typeof data.searchParams.dayRange === "number" ? data.searchParams.dayRange : 7));
           setSearchLang(data.searchParams.lang || "all");
         }
@@ -382,6 +408,8 @@ export default function HunterPage() {
         body: JSON.stringify({
           maxSubs: parseInt(maxSubs),
           maxViews: parseInt(maxViews),
+          minSubs: parseInt(minSubs),
+          minViews: parseInt(minViews),
           dayRange: parseInt(dayRange),
           niche: selectedNiche,
           lang: searchLang,
@@ -405,6 +433,8 @@ export default function HunterPage() {
             niche: selectedNiche,
             maxSubs: parseInt(maxSubs),
             maxViews: parseInt(maxViews),
+            minSubs: parseInt(minSubs),
+            minViews: parseInt(minViews),
             dayRange: parseInt(dayRange),
             lang: searchLang,
             keywords: selectedNiche === "custom" ? customKeywords : "",
@@ -434,7 +464,7 @@ export default function HunterPage() {
 
       {/* Config Panel */}
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
           <div>
             <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>분야</label>
             <select className="input" style={{ cursor: "pointer" }} value={selectedNiche} onChange={e => setSelectedNiche(e.target.value)}>
@@ -448,30 +478,6 @@ export default function HunterPage() {
                   ))}
                 </optgroup>
               ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>구독자 상한</label>
-            <select className="input" style={{ cursor: "pointer" }} value={maxSubs} onChange={e => setMaxSubs(e.target.value)}>
-              <option value="5000">5천 이하</option>
-              <option value="10000">1만 이하</option>
-              <option value="50000">5만 이하</option>
-              <option value="100000">10만 이하</option>
-              <option value="500000">50만 이하</option>
-              <option value="1000000">100만 이하</option>
-              <option value="0">무제한</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>조회수 상한</label>
-            <select className="input" style={{ cursor: "pointer" }} value={maxViews} onChange={e => setMaxViews(e.target.value)}>
-              <option value="5000">5천 이하</option>
-              <option value="20000">2만 이하</option>
-              <option value="50000">5만 이하</option>
-              <option value="100000">10만 이하</option>
-              <option value="500000">50만 이하</option>
-              <option value="1000000">100만 이하</option>
-              <option value="0">무제한</option>
             </select>
           </div>
           <div>
@@ -499,6 +505,41 @@ export default function HunterPage() {
               ? <><RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} />수집 중...</>
               : <><Zap size={14} />AI 자동 수집 시작</>}
           </button>
+        </div>
+
+        {/* 구독자 · 조회수 범위 (최소 이상 ~ 최대 이하) */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "end", marginTop: 12 }}>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>구독자 최소 (이상)</label>
+            <select className="input" style={{ cursor: "pointer" }} value={minSubs}
+              onChange={e => { setMinSubs(e.target.value); if (parseInt(maxSubs) > 0 && parseInt(e.target.value) > parseInt(maxSubs)) setMaxSubs("0"); }}>
+              {MIN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>구독자 최대 (이하)</label>
+            <select className="input" style={{ cursor: "pointer" }} value={maxSubs}
+              onChange={e => { setMaxSubs(e.target.value); if (parseInt(e.target.value) > 0 && parseInt(minSubs) > parseInt(e.target.value)) setMinSubs("0"); }}>
+              {MAX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>조회수 최소 (이상)</label>
+            <select className="input" style={{ cursor: "pointer" }} value={minViews}
+              onChange={e => { setMinViews(e.target.value); if (parseInt(maxViews) > 0 && parseInt(e.target.value) > parseInt(maxViews)) setMaxViews("0"); }}>
+              {MIN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>조회수 최대 (이하)</label>
+            <select className="input" style={{ cursor: "pointer" }} value={maxViews}
+              onChange={e => { setMaxViews(e.target.value); if (parseInt(e.target.value) > 0 && parseInt(minViews) > parseInt(e.target.value)) setMinViews("0"); }}>
+              {MAX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+          💡 소규모 채널 발굴은 최대값만, 검증된 대형 채널·히트 영상은 최소값만, 특정 구간은 둘 다 지정하세요. 범위가 어긋나면 반대쪽이 자동으로 해제됩니다.
         </div>
 
         {/* 키워드 직접 입력 */}
