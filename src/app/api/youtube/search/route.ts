@@ -95,6 +95,10 @@ const LANG_OPTIONS: { code: string; label: string; relevance: string }[] = [
 export async function POST(req: NextRequest) {
   try {
     const { maxSubs = 50000, maxViews = 20000, dayRange = 7, niche = "전체", lang = "all", keywords: customInput = "" } = await req.json();
+    // 상한값 0 = 무제한 (구독자·조회수·업로드 기간)
+    const subsCap = Number(maxSubs) > 0 ? Number(maxSubs) : 0;
+    const viewsCap = Number(maxViews) > 0 ? Number(maxViews) : 0;
+    const dayCap = Number(dayRange) > 0 ? Number(dayRange) : 0;
 
     // YouTube API 키 — VIP/관리자: 서버 공용 키, 일반 회원: 본인 키
     const guard = await requireUser();
@@ -118,7 +122,9 @@ export async function POST(req: NextRequest) {
       : [...selection.keywords].sort(() => Math.random() - 0.5)
     ).slice(0, MAX_KEYWORDS_PER_SCAN);
 
-    const publishedAfter = new Date(Date.now() - dayRange * 24 * 3600 * 1000).toISOString();
+    const publishedAfterParam = dayCap > 0
+      ? `publishedAfter=${new Date(Date.now() - dayCap * 24 * 3600 * 1000).toISOString()}&`
+      : "";
     const allVideoIds: string[] = [];
     const videoNicheMap: Record<string, string> = {};
 
@@ -129,7 +135,7 @@ export async function POST(req: NextRequest) {
       let searchUrl =
         `https://www.googleapis.com/youtube/v3/search?` +
         `part=snippet&type=video&q=${encodeURIComponent(keyword)}&` +
-        `publishedAfter=${publishedAfter}&maxResults=15&` +
+        `${publishedAfterParam}maxResults=15&` +
         `videoDuration=medium&` +
         `videoEmbeddable=true&videoSyndicated=true&key=${apiKey}`;
 
@@ -189,10 +195,10 @@ export async function POST(req: NextRequest) {
       const durationSecs = parseDuration(video.contentDetails?.duration ?? "");
       const { daysAgo, label } = getDaysAgo(video.snippet?.publishedAt ?? "");
 
-      // 필터: 구독자 & 조회수 상한
-      if (subs > maxSubs) continue;
-      if (views > maxViews) continue;
-      if (daysAgo > dayRange) continue;
+      // 필터: 구독자 · 조회수 · 기간 상한 (0 = 무제한)
+      if (subsCap > 0 && subs > subsCap) continue;
+      if (viewsCap > 0 && views > viewsCap) continue;
+      if (dayCap > 0 && daysAgo > dayCap) continue;
 
       // 필터: 임베드 불가 또는 한국 지역 제한 영상 제외
       const embeddable = video.status?.embeddable !== false;

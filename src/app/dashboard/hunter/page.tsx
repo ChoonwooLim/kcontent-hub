@@ -256,9 +256,10 @@ export default function HunterPage() {
         if (data.searchParams) {
           setSelectedNiche(data.searchParams.niche || "전체");
           if (data.searchParams.keywords) setCustomKeywords(data.searchParams.keywords);
-          setMaxSubs(String(data.searchParams.maxSubs || 50000));
-          setMaxViews(String(data.searchParams.maxViews || 20000));
-          setDayRange(String(data.searchParams.dayRange || 7));
+          // 0 = 무제한 이므로 || 로 기본값을 덮어쓰지 않는다
+          setMaxSubs(String(typeof data.searchParams.maxSubs === "number" ? data.searchParams.maxSubs : 50000));
+          setMaxViews(String(typeof data.searchParams.maxViews === "number" ? data.searchParams.maxViews : 20000));
+          setDayRange(String(typeof data.searchParams.dayRange === "number" ? data.searchParams.dayRange : 7));
           setSearchLang(data.searchParams.lang || "all");
         }
       } catch { /* ignore */ }
@@ -456,6 +457,9 @@ export default function HunterPage() {
               <option value="10000">1만 이하</option>
               <option value="50000">5만 이하</option>
               <option value="100000">10만 이하</option>
+              <option value="500000">50만 이하</option>
+              <option value="1000000">100만 이하</option>
+              <option value="0">무제한</option>
             </select>
           </div>
           <div>
@@ -465,6 +469,9 @@ export default function HunterPage() {
               <option value="20000">2만 이하</option>
               <option value="50000">5만 이하</option>
               <option value="100000">10만 이하</option>
+              <option value="500000">50만 이하</option>
+              <option value="1000000">100만 이하</option>
+              <option value="0">무제한</option>
             </select>
           </div>
           <div>
@@ -473,6 +480,9 @@ export default function HunterPage() {
               <option value="7">최근 7일</option>
               <option value="14">최근 14일</option>
               <option value="30">최근 30일</option>
+              <option value="180">최근 6개월</option>
+              <option value="365">최근 1년</option>
+              <option value="0">무제한</option>
             </select>
           </div>
           <div>

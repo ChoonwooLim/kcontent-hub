@@ -43,9 +43,9 @@ export async function POST(req: NextRequest) {
     const record = await prisma.hunterSearch.create({
       data: {
         niche: niche || "전체",
-        maxSubs: maxSubs || 50000,
-        maxViews: maxViews || 20000,
-        dayRange: dayRange || 7,
+        maxSubs: typeof maxSubs === "number" ? maxSubs : 50000,   // 0 = 무제한
+        maxViews: typeof maxViews === "number" ? maxViews : 20000,
+        dayRange: typeof dayRange === "number" ? dayRange : 7,
         lang: lang || "all",
         keywords: typeof keywords === "string" && keywords.trim() ? keywords.trim().slice(0, 500) : null,
         resultCount: Array.isArray(videos) ? videos.length : 0,
