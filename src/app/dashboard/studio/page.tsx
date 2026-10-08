@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
   Sparkles, Check, Link2, Loader, AlertCircle,
-  Save, FolderOpen, Trash2, Clock, Camera, Languages, ArrowRight
+  Save, FolderOpen, Trash2, Clock, Camera, Languages, ArrowRight, Maximize2, Minimize2
 } from "lucide-react";
 import {
   LANGS, LANG_CODES, type LangCode, isLangCode,
@@ -187,6 +187,7 @@ export default function StudioPage() {
   const ytCaptionsRef = useRef(false);
   const [translateEngine, setTranslateEngine] = useState<string | null>(null);                  // 서버 번역 엔진 라벨
   const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);   // 플레이어 컨테이너 전체화면 (자막 오버레이 포함)
 
   // 추가된 단일 썸네일 대신 배열 사용
   const [capturedThumbnails, setCapturedThumbnails] = useState<string[]>([]);
@@ -421,6 +422,48 @@ export default function StudioPage() {
     ytCaptionsRef.current = showYtCaptions;
     if (!isFileMode) applyYtCaptions(playerRef.current, showYtCaptions);
   }, [showYtCaptions, isFileMode]);
+
+  /* ── 전체화면 (플레이어 컨테이너 — 자막 오버레이가 함께 보임) ── */
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+    if (!el) return;
+    const doc = document as Document & { webkitExitFullscreen?: () => void; webkitFullscreenElement?: Element | null };
+    const current = document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+    if (current) {
+      (document.exitFullscreen?.bind(document) ?? doc.webkitExitFullscreen?.bind(document))?.();
+    } else {
+      const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+      Promise.resolve(req?.()).catch(() => { /* 브라우저가 거부 (권한·iframe 정책) */ });
+    }
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      const current = document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+      setIsFullscreen(!!current && current === containerRef.current);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("webkitfullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("webkitfullscreenchange", onChange);
+    };
+  }, []);
+
+  // F 키로 전체화면 토글 (입력란에 포커스가 있을 때는 제외)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "f" && e.key !== "F") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (!videoId && !isFileMode) return;
+      e.preventDefault();
+      toggleFullscreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleFullscreen, videoId, isFileMode]);
 
   /* ── 현재 시간 싱크 (100ms 간격) — YouTube 모드만 ──────── */
   useEffect(() => {
@@ -972,8 +1015,9 @@ export default function StudioPage() {
 
           {/* YouTube 영상 플레이어 */}
           <div ref={containerRef} style={{
-            background: "#000", borderRadius: 10, overflow: "hidden",
-            border: "1px solid var(--border-default)", aspectRatio: "16/9",
+            background: "#000", borderRadius: isFullscreen ? 0 : 10, overflow: "hidden",
+            border: isFullscreen ? "none" : "1px solid var(--border-default)",
+            aspectRatio: isFullscreen ? "auto" : "16/9",
             position: "relative",
           }}>
             {(videoId || isFileMode) ? (
@@ -1004,8 +1048,8 @@ export default function StudioPage() {
                     style={{
                       position: "absolute", left: "50%", transform: "translateX(-50%)",
                       ...(overlayPos === "top" ? { top: "9%" } : { bottom: "12%" }),
-                      background: p.bg, color: p.color, padding: "8px 18px", borderRadius: 6,
-                      fontSize: 16, fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
+                      background: p.bg, color: p.color, padding: isFullscreen ? "12px 28px" : "8px 18px", borderRadius: isFullscreen ? 10 : 6,
+                      fontSize: isFullscreen ? "clamp(22px, 2.8vw, 48px)" : 16, fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
                       maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap",
                       transition: "opacity 0.2s", zIndex: 3,
                       pointerEvents: "none",
@@ -1015,7 +1059,7 @@ export default function StudioPage() {
                       <div
                         lang={LANGS[secondaryLang].htmlLang}
                         style={{
-                          fontSize: 12, fontWeight: 500, opacity: 0.85, marginTop: 4,
+                          fontSize: isFullscreen ? "clamp(16px, 1.9vw, 32px)" : 12, fontWeight: 500, opacity: 0.85, marginTop: isFullscreen ? 8 : 4,
                           fontFamily: fontStackFor(secondaryLang, p.font),
                         }}>
                         {activeSub.texts[secondaryLang]}
@@ -1047,6 +1091,17 @@ export default function StudioPage() {
 
                 {/* 시간 표시 + YouTube 자체 CC 토글 */}
                 <div style={{ position: "absolute", top: 10, right: 12, display: "flex", gap: 6, alignItems: "center", zIndex: 4 }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleFullscreen(); }}
+                    title={isFullscreen ? "전체화면 종료 (Esc / F)" : "전체화면 (F) — 자막 오버레이 포함"}
+                    style={{
+                      background: "rgba(0,0,0,0.6)", color: "white", padding: "3px 8px", borderRadius: 5,
+                      fontSize: 10, fontWeight: 700, border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                    }}>
+                    {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+                    {isFullscreen ? "종료" : "전체화면"}
+                  </button>
                   {!isFileMode && (
                     <button
                       onClick={e => { e.stopPropagation(); setShowYtCaptions(v => !v); }}
@@ -1129,6 +1184,10 @@ export default function StudioPage() {
               </div>
               <button className="btn-icon" onClick={toggleMute}>
                 {muted ? <VolumeX size={14} color="var(--text-muted)" /> : <Volume2 size={14} color="var(--text-muted)" />}
+              </button>
+              <button className="btn-icon" onClick={toggleFullscreen} disabled={!videoId && !isFileMode}
+                title={isFullscreen ? "전체화면 종료 (Esc / F)" : "전체화면 (F)"}>
+                {isFullscreen ? <Minimize2 size={14} color="var(--text-muted)" /> : <Maximize2 size={14} color="var(--text-muted)" />}
               </button>
             </div>
           </div>
