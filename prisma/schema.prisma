@@ -88,6 +88,7 @@ model HunterSearch {
   maxViews      Int      @default(20000)
   dayRange      Int      @default(7)
   lang          String   @default("all")
+  keywords      String?              // 직접 입력 키워드 (niche="custom" 일 때, 쉼표 구분)
   resultCount   Int      @default(0)
   resultsJson   String   @db.Text    // VideoItem[] JSON
   

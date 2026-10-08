@@ -7,7 +7,8 @@ import {
   Check, Copy, BookmarkCheck, Loader, Mail, MessageSquare, Scissors
 } from "lucide-react";
 
-const NICHES = ["전체", "K-먹방", "K-바비큐", "K-교통", "K-문화", "K-의료", "K-뷰티", "K-라이프", "K-쇼핑", "K-관광"];
+import { NICHE_GROUPS, NICHES, MAX_CUSTOM_KEYWORDS } from "@/lib/niches";
+
 const LANGS = [
   { code: "all", label: "🌐 전체 언어" },
   { code: "en",  label: "🇺🇸 English" },
@@ -228,7 +229,10 @@ function OutreachModal({ data, onClose }: { data: OutreachData; onClose: () => v
 
 export default function HunterPage() {
   const router = useRouter();
-  const [selectedNiche, setSelectedNiche] = useState("전체");
+  const [selectedNiche, setSelectedNiche] = useState("전체");          // 수집 조건: "전체" | 분야 id | "group:<id>" | "custom"
+  const [customKeywords, setCustomKeywords] = useState("");            // 직접 입력 키워드 (쉼표 구분)
+  const [filterNiche, setFilterNiche] = useState("전체");              // 결과 목록 필터 (수집 조건과 분리)
+  const [lastScan, setLastScan] = useState<{ title: string; keywords: string[] } | null>(null);
   const [maxSubs, setMaxSubs] = useState("50000");
   const [maxViews, setMaxViews] = useState("20000");
   const [dayRange, setDayRange] = useState("7");
@@ -251,6 +255,7 @@ export default function HunterPage() {
         }
         if (data.searchParams) {
           setSelectedNiche(data.searchParams.niche || "전체");
+          if (data.searchParams.keywords) setCustomKeywords(data.searchParams.keywords);
           setMaxSubs(String(data.searchParams.maxSubs || 50000));
           setMaxViews(String(data.searchParams.maxViews || 20000));
           setDayRange(String(data.searchParams.dayRange || 7));
@@ -363,6 +368,10 @@ export default function HunterPage() {
   };
 
   const runScan = async () => {
+    if (selectedNiche === "custom" && !customKeywords.trim()) {
+      setError("직접 입력 모드에서는 검색 키워드를 1개 이상 입력하세요. (쉼표로 구분, 외국어 권장)");
+      return;
+    }
     setScanning(true);
     setError(null);
     try {
@@ -375,6 +384,7 @@ export default function HunterPage() {
           dayRange: parseInt(dayRange),
           niche: selectedNiche,
           lang: searchLang,
+          keywords: selectedNiche === "custom" ? customKeywords : "",
         }),
       });
       const data = await res.json();
@@ -383,6 +393,8 @@ export default function HunterPage() {
         return;
       }
       setVideos(data.videos ?? []);
+      setFilterNiche("전체");
+      setLastScan({ title: data.title ?? "", keywords: data.keywordsUsed ?? [] });
       // DB에 검색 결과 저장
       try {
         await fetch("/api/hunter/history", {
@@ -394,6 +406,7 @@ export default function HunterPage() {
             maxViews: parseInt(maxViews),
             dayRange: parseInt(dayRange),
             lang: searchLang,
+            keywords: selectedNiche === "custom" ? customKeywords : "",
             videos: data.videos ?? [],
           }),
         });
@@ -405,7 +418,8 @@ export default function HunterPage() {
     }
   };
 
-  const filtered = selectedNiche === "전체" ? videos : videos.filter(v => v.niche === selectedNiche);
+  const resultNiches = ["전체", ...Array.from(new Set(videos.map(v => v.niche)))];
+  const filtered = filterNiche === "전체" ? videos : videos.filter(v => v.niche === filterNiche);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1100 }}>
@@ -414,12 +428,27 @@ export default function HunterPage() {
 
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>소재 수집기</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>전세계 외국인이 한국을 방문한 영상을 YouTube API로 실시간 발굴 · 한국어 영상 자동 제외 · S/A/B 등급화</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>분야 선택 또는 키워드 직접 입력으로 전세계 소규모 채널의 외국어 영상을 YouTube API로 실시간 발굴 · 한국어 영상 자동 제외 · S/A/B 등급화</p>
       </div>
 
       {/* Config Panel */}
       <div className="card" style={{ padding: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+          <div>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>분야</label>
+            <select className="input" style={{ cursor: "pointer" }} value={selectedNiche} onChange={e => setSelectedNiche(e.target.value)}>
+              <option value="전체">🌍 전체 분야 (랜덤 믹스)</option>
+              <option value="custom">✏️ 키워드 직접 입력</option>
+              {NICHE_GROUPS.map(g => (
+                <optgroup key={g.id} label={`${g.emoji} ${g.label}`}>
+                  <option value={`group:${g.id}`}>{g.label} 전체</option>
+                  {NICHES.filter(n => n.group === g.id).map(n => (
+                    <option key={n.id} value={n.id}>{n.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
           <div>
             <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>구독자 상한</label>
             <select className="input" style={{ cursor: "pointer" }} value={maxSubs} onChange={e => setMaxSubs(e.target.value)}>
@@ -462,6 +491,33 @@ export default function HunterPage() {
           </button>
         </div>
 
+        {/* 키워드 직접 입력 */}
+        {selectedNiche === "custom" && (
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>검색 키워드 · 쉼표로 구분, 최대 {MAX_CUSTOM_KEYWORDS}개 (쿼터 절약을 위해 앞 3개 사용)</label>
+            <div className="input-group">
+              <Search size={15} className="input-icon" />
+              <input
+                className="input" value={customKeywords}
+                onChange={e => setCustomKeywords(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !scanning) runScan(); }}
+                placeholder="예) cold plunge routine, sauna vlog, ice bath beginner"
+              />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.6 }}>
+              💡 외국어 키워드를 권장합니다. 한국어 나레이션·제목 영상은 자동 제외되므로 한국어 키워드는 결과가 거의 없습니다. 언어를 함께 지정하면 해당 언어 영상이 우선됩니다.
+            </div>
+          </div>
+        )}
+        {lastScan && !scanning && lastScan.keywords.length > 0 && (
+          <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-muted)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
+            최근 수집: <strong style={{ color: "var(--text-secondary)" }}>{lastScan.title}</strong> · 사용 키워드
+            {lastScan.keywords.map(k => (
+              <code key={k} style={{ padding: "1px 6px", borderRadius: 4, background: "var(--bg-input)", fontSize: 10 }}>{k}</code>
+            ))}
+          </div>
+        )}
+
         {scanning && (
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
@@ -486,13 +542,13 @@ export default function HunterPage() {
       {videos.length > 0 && (
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
           <SlidersHorizontal size={14} color="var(--text-muted)" />
-          {NICHES.map(n => (
-            <button key={n} onClick={() => setSelectedNiche(n)}
+          {resultNiches.map(n => (
+            <button key={n} onClick={() => setFilterNiche(n)}
               style={{
                 padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", border: "1px solid",
-                background: selectedNiche === n ? "var(--brand-dim)" : "transparent",
-                borderColor: selectedNiche === n ? "rgba(99,102,241,0.3)" : "var(--border-default)",
-                color: selectedNiche === n ? "#818cf8" : "var(--text-muted)", transition: "all 0.15s"
+                background: filterNiche === n ? "var(--brand-dim)" : "transparent",
+                borderColor: filterNiche === n ? "rgba(99,102,241,0.3)" : "var(--border-default)",
+                color: filterNiche === n ? "#818cf8" : "var(--text-muted)", transition: "all 0.15s"
               }}>
               {n}
             </button>

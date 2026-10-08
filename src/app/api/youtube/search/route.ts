@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, resolveYoutubeKey, keyRequiredResponse } from "@/lib/access";
+import { resolveNicheKeywords, MAX_KEYWORDS_PER_SCAN } from "@/lib/niches";
 
 // YouTube API 응답 → VideoItem 형태로 변환 + AI 점수 산정
 function scoreVideo(video: {
@@ -76,60 +77,6 @@ function getDaysAgo(publishedAt: string): { daysAgo: number; label: string } {
   return { daysAgo: days, label: `${days}일 전` };
 }
 
-// 니치별 다국어 키워드 — 영어 + 일본어 + 스페인어 + 프랑스어 + 독일어 + 태국어 + 포르투갈어 + 베트남어
-const NICHE_KEYWORDS: Record<string, string[]> = {
-  "K-먹방": [
-    "korean food vlog", "eating in korea", "korean convenience store food",
-    "韓国 グルメ 旅行", "韓国 コンビニ 外国人",
-    "comida coreana viaje", "comida coréia vlog",
-    "cuisine coréenne voyage", "koreanisches Essen probieren",
-    "อาหารเกาหลี เที่ยว", "ẩm thực hàn quốc du lịch",
-  ],
-  "K-바비큐": [
-    "korean bbq foreigner", "samgyeopsal experience tourist",
-    "韓国 焼肉 体験", "barbacoa coreana turista",
-    "BBQ coréen expérience", "koreanisches BBQ", "ปิ้งย่างเกาหลี",
-  ],
-  "K-교통": [
-    "seoul subway foreigner", "korean public transport tourist",
-    "ソウル 地下鉄 外国人", "metro de seúl turista",
-    "métro séoul touriste", "Seoul U-Bahn Tourist",
-  ],
-  "K-문화": [
-    "jjimjilbang foreign", "korean culture shock foreigner",
-    "韓国 文化 ショック", "choque cultural corea",
-    "culture coréenne choc", "Kulturschock Korea",
-    "วัฒนธรรมเกาหลี ชาวต่างชาติ",
-  ],
-  "K-의료": [
-    "korea hospital tourist", "korean clinic foreigner",
-    "韓国 病院 外国人", "hospital corea turista",
-  ],
-  "K-뷰티": [
-    "korea beauty shopping tourist", "korean skincare haul",
-    "韓国 コスメ 購入", "compras belleza corea",
-    "cosmétique coréen shopping", "koreanische Kosmetik",
-    "เครื่องสำอางเกาหลี ช้อปปิ้ง",
-  ],
-  "K-라이프": [
-    "living in seoul foreigner daily life", "expat korea vlog",
-    "韓国 生活 外国人", "vivir en corea experiencia",
-    "vivre en corée vlog", "Leben in Korea Alltag",
-    "ชีวิตในเกาหลี ต่างชาติ", "sống ở hàn quốc",
-  ],
-  "K-쇼핑": [
-    "daiso korea shopping foreigner", "market in korea tourist",
-    "韓国 ダイソー 買い物", "compras en corea mercado",
-    "shopping corée marché",
-  ],
-  "K-관광": [
-    "korea travel vlog tourist", "first time seoul foreigner",
-    "韓国 旅行 初めて", "viaje corea primera vez",
-    "voyage corée première fois", "Korea Reise zum ersten Mal",
-    "เที่ยวเกาหลี ครั้งแรก", "du lịch hàn quốc lần đầu",
-  ],
-};
-
 // 언어 코드 → 검색 우선 언어 매핑
 const LANG_OPTIONS: { code: string; label: string; relevance: string }[] = [
   { code: "all",  label: "전체 언어", relevance: "" },
@@ -147,7 +94,7 @@ const LANG_OPTIONS: { code: string; label: string; relevance: string }[] = [
 
 export async function POST(req: NextRequest) {
   try {
-    const { maxSubs = 50000, maxViews = 20000, dayRange = 7, niche = "전체", lang = "all" } = await req.json();
+    const { maxSubs = 50000, maxViews = 20000, dayRange = 7, niche = "전체", lang = "all", keywords: customInput = "" } = await req.json();
 
     // YouTube API 키 — VIP/관리자: 서버 공용 키, 일반 회원: 본인 키
     const guard = await requireUser();
@@ -155,20 +102,21 @@ export async function POST(req: NextRequest) {
     const apiKey = await resolveYoutubeKey(guard.user);
     if (!apiKey) return keyRequiredResponse("youtube", guard.user);
 
-    // 검색 키워드 선택
-    let keywords: string[];
-    if (niche !== "전체" && NICHE_KEYWORDS[niche]) {
-      keywords = NICHE_KEYWORDS[niche];
-    } else {
-      keywords = Object.values(NICHE_KEYWORDS).flat().sort(() => Math.random() - 0.5);
+    // 검색 키워드 선택 — 직접 입력 > 특정 분야 > 그룹 전체 > 전체 분야 (정의: src/lib/niches.ts)
+    const selection = resolveNicheKeywords(String(niche), typeof customInput === "string" ? customInput : "");
+    if (selection.keywords.length === 0) {
+      return NextResponse.json({ error: "검색 키워드를 1개 이상 입력하세요. (쉼표로 구분, 외국어 권장)" }, { status: 400 });
     }
 
     // 언어 지정 시 해당 언어 키워드만 필터, 전체면 랜덤 믹스
     const langConfig = LANG_OPTIONS.find(l => l.code === lang);
     const relevanceLanguage = langConfig?.relevance || "";
 
-    // API 쿼터 절약: 최대 3개 키워드로 제한
-    const selectedKeywords = keywords.sort(() => Math.random() - 0.5).slice(0, 3);
+    // API 쿼터 절약: 최대 3개 키워드 (직접 입력은 입력 순서 유지, 분야는 랜덤 샘플링)
+    const selectedKeywords = (selection.ordered
+      ? selection.keywords
+      : [...selection.keywords].sort(() => Math.random() - 0.5)
+    ).slice(0, MAX_KEYWORDS_PER_SCAN);
 
     const publishedAfter = new Date(Date.now() - dayRange * 24 * 3600 * 1000).toISOString();
     const allVideoIds: string[] = [];
@@ -176,8 +124,7 @@ export async function POST(req: NextRequest) {
 
     // 1단계: 키워드별 검색 (relevanceLanguage 옵션)
     for (const keyword of selectedKeywords) {
-      const nicheLabel = niche !== "전체" ? niche
-        : Object.entries(NICHE_KEYWORDS).find(([, kws]) => kws.includes(keyword))?.[0] ?? "K-관광";
+      const nicheLabel = selection.labelFor(keyword);
 
       let searchUrl =
         `https://www.googleapis.com/youtube/v3/search?` +
@@ -207,7 +154,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (allVideoIds.length === 0) {
-      return NextResponse.json({ videos: [] });
+      return NextResponse.json({ videos: [], total: 0, title: selection.title, keywordsUsed: selectedKeywords, mode: selection.mode });
     }
 
     // 2단계: 영상 상세 정보 (조회수, 좋아요, 길이)
@@ -307,7 +254,7 @@ export async function POST(req: NextRequest) {
         viewsRaw: views,
         likes: formatCount(likes),
         duration: formatDuration(durationSecs),
-        niche: videoNicheMap[video.id] ?? "K-관광",
+        niche: videoNicheMap[video.id] ?? selection.title,
         grade,
         score,
         hasCC: isNonKorean,
@@ -322,7 +269,10 @@ export async function POST(req: NextRequest) {
     // 점수 내림차순 정렬
     results.sort((a, b) => b.score - a.score);
 
-    return NextResponse.json({ videos: results.slice(0, 20), total: results.length });
+    return NextResponse.json({
+      videos: results.slice(0, 20), total: results.length,
+      title: selection.title, keywordsUsed: selectedKeywords, mode: selection.mode,
+    });
   } catch (err) {
     return NextResponse.json({ error: `서버 오류: ${String(err)}` }, { status: 500 });
   }
