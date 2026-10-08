@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, resolveYoutubeKey, keyRequiredResponse } from "@/lib/access";
 import { resolveNicheKeywords, MAX_KEYWORDS_PER_SCAN } from "@/lib/niches";
+import { ytDlpSearch } from "@/lib/ytsearch";
+
+/** YouTube Data API 오류 → 사용자 안내 문구 (쿼터 초과는 초기화 시각까지) */
+function friendlyYoutubeError(err: { error?: { message?: string; errors?: { reason?: string }[] } }, status: number): string {
+  const msg = err?.error?.message ?? `HTTP ${status}`;
+  const reason = err?.error?.errors?.[0]?.reason ?? "";
+  if (/quota/i.test(msg) || /quota/i.test(reason)) {
+    return "YouTube Data API 일일 쿼터(10,000 units)를 모두 사용했습니다. 쿼터는 매일 태평양 시간 자정(한국 시간 오후 4~5시)에 초기화됩니다. "
+      + "검색은 yt-dlp(쿼터 0)로 처리하므로 상세 조회(1~2 units)만 남으면 다시 수집할 수 있습니다. 일반 회원은 본인 키, VIP/관리자는 서버 키의 쿼터를 사용합니다.";
+  }
+  return `YouTube API 오류: ${msg}`;
+}
 
 // YouTube API 응답 → VideoItem 형태로 변환 + AI 점수 산정
 function scoreVideo(video: {
@@ -106,17 +118,17 @@ export async function POST(req: NextRequest) {
     const apiKey = await resolveYoutubeKey(guard.user);
     if (!apiKey) return keyRequiredResponse("youtube", guard.user);
 
-    // 검색 키워드 선택 — 직접 입력 > 특정 분야 > 그룹 전체 > 전체 분야 (정의: src/lib/niches.ts)
-    const selection = resolveNicheKeywords(String(niche), typeof customInput === "string" ? customInput : "");
+    // 검색 키워드 선택 — 직접 입력 > 특정 분야 > 그룹 전체 > 전체 분야. 언어 선택 시 그 언어 키워드 우선 (정의: src/lib/niches.ts)
+    const selection = resolveNicheKeywords(String(niche), typeof customInput === "string" ? customInput : "", String(lang));
     if (selection.keywords.length === 0) {
       return NextResponse.json({ error: "검색 키워드를 1개 이상 입력하세요. (쉼표로 구분, 외국어 권장)" }, { status: 400 });
     }
 
-    // 언어 지정 시 해당 언어 키워드만 필터, 전체면 랜덤 믹스
     const langConfig = LANG_OPTIONS.find(l => l.code === lang);
     const relevanceLanguage = langConfig?.relevance || "";
+    const wantLang = lang && lang !== "all" ? String(lang).toLowerCase() : "";
 
-    // API 쿼터 절약: 최대 3개 키워드 (직접 입력은 입력 순서 유지, 분야는 랜덤 샘플링)
+    // 키워드 최대 3개 (직접 입력·언어 선택은 앞에서부터, 전체 언어는 랜덤 샘플링)
     const selectedKeywords = (selection.ordered
       ? selection.keywords
       : [...selection.keywords].sort(() => Math.random() - 0.5)
@@ -127,47 +139,59 @@ export async function POST(req: NextRequest) {
       : "";
     const allVideoIds: string[] = [];
     const videoNicheMap: Record<string, string> = {};
+    const addIds = (ids: string[], label: string) => {
+      for (const vid of ids) {
+        if (vid && !allVideoIds.includes(vid)) { allVideoIds.push(vid); videoNicheMap[vid] = label; }
+      }
+    };
 
-    // 1단계: 키워드별 검색 (relevanceLanguage 옵션)
-    for (const keyword of selectedKeywords) {
-      const nicheLabel = selection.labelFor(keyword);
+    // 1단계: 검색 — yt-dlp 웹 검색(Data API 쿼터 0)을 키워드별 병렬로 수행, 실패한 키워드만 Data API search.list(100 units)로 폴백
+    const dlpResults = await Promise.all(selectedKeywords.map(async keyword => {
+      try {
+        const hits = await ytDlpSearch(keyword, dayCap, 30);
+        return { keyword, ids: hits.map(h => h.id) as string[] | null };
+      } catch {
+        return { keyword, ids: null as string[] | null };
+      }
+    }));
+    for (const res of dlpResults) if (res.ids) addIds(res.ids, selection.labelFor(res.keyword));
+    const failedKeywords = dlpResults.filter(res => !res.ids).map(res => res.keyword);
+    const searchEngine = failedKeywords.length === 0 ? "yt-dlp" : failedKeywords.length === selectedKeywords.length ? "data-api" : "mixed";
 
+    for (const keyword of failedKeywords) {
       let searchUrl =
         `https://www.googleapis.com/youtube/v3/search?` +
         `part=snippet&type=video&q=${encodeURIComponent(keyword)}&` +
-        `${publishedAfterParam}maxResults=15&` +
+        `${publishedAfterParam}maxResults=50&` +
         `videoDuration=medium&` +
         `videoEmbeddable=true&videoSyndicated=true&key=${apiKey}`;
-
-      // 전체 언어가 아니면 relevanceLanguage로 특정 언어 우선
-      if (relevanceLanguage) {
-        searchUrl += `&relevanceLanguage=${relevanceLanguage}`;
-      }
+      if (relevanceLanguage) searchUrl += `&relevanceLanguage=${relevanceLanguage}`;
 
       const searchRes = await fetch(searchUrl);
       if (!searchRes.ok) {
-        const err = await searchRes.json();
-        return NextResponse.json({ error: `YouTube 검색 실패: ${err.error?.message ?? searchRes.status}` }, { status: 400 });
+        const err = await searchRes.json().catch(() => ({}));
+        return NextResponse.json({ error: friendlyYoutubeError(err, searchRes.status) }, { status: 400 });
       }
       const searchData = await searchRes.json();
-      for (const item of searchData.items ?? []) {
-        const vid = item.id?.videoId;
-        if (vid && !allVideoIds.includes(vid)) {
-          allVideoIds.push(vid);
-          videoNicheMap[vid] = nicheLabel;
-        }
-      }
+      addIds(
+        ((searchData.items ?? []) as { id?: { videoId?: string } }[]).map(it => it.id?.videoId ?? "").filter(Boolean),
+        selection.labelFor(keyword),
+      );
     }
 
     if (allVideoIds.length === 0) {
-      return NextResponse.json({ videos: [], total: 0, title: selection.title, keywordsUsed: selectedKeywords, mode: selection.mode });
+      return NextResponse.json({ videos: [], total: 0, title: selection.title, keywordsUsed: selectedKeywords, mode: selection.mode, langFallback: selection.langFallback, searchEngine, lang });
     }
 
-    // 2단계: 영상 상세 정보 (조회수, 좋아요, 길이)
-    const videoIds = allVideoIds.slice(0, 30).join(",");
+    // 2단계: 영상 상세 정보 (조회수, 좋아요, 길이, 언어) — 50개까지 1 unit
+    const videoIds = allVideoIds.slice(0, 50).join(",");
     const videoRes = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails,status&id=${videoIds}&key=${apiKey}`
     );
+    if (!videoRes.ok) {
+      const err = await videoRes.json().catch(() => ({}));
+      return NextResponse.json({ error: friendlyYoutubeError(err, videoRes.status) }, { status: 400 });
+    }
     const videoData = await videoRes.json();
 
     // 3단계: 채널 구독자 수 (배치)
@@ -243,6 +267,15 @@ export async function POST(req: NextRequest) {
         if (descKoCount > 30) continue; // 한글 30자 이상이면 한국어 콘텐츠
       }
 
+      // ── 쇼츠(60초 미만) 제외 — yt-dlp 검색은 길이 필터가 없음 ──
+      if (durationSecs > 0 && durationSecs < 60) continue;
+
+      // ── 선택한 언어와 다른 언어로 표시된 영상 제외 (언어 메타데이터가 있는 영상만 판단) ──
+      if (wantLang) {
+        const known = audioLang || defaultLang;
+        if (known && !known.startsWith(wantLang)) continue;
+      }
+
       // ── 점수 산정 ─────────────────────────────────────────
       const { score, grade } = scoreVideo({ views, likes, subs, daysAgo, duration: durationSecs });
 
@@ -278,6 +311,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       videos: results.slice(0, 20), total: results.length,
       title: selection.title, keywordsUsed: selectedKeywords, mode: selection.mode,
+      langFallback: selection.langFallback, searchEngine, lang,
     });
   } catch (err) {
     return NextResponse.json({ error: `서버 오류: ${String(err)}` }, { status: 500 });

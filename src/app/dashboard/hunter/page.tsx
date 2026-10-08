@@ -232,7 +232,7 @@ export default function HunterPage() {
   const [selectedNiche, setSelectedNiche] = useState("전체");          // 수집 조건: "전체" | 분야 id | "group:<id>" | "custom"
   const [customKeywords, setCustomKeywords] = useState("");            // 직접 입력 키워드 (쉼표 구분)
   const [filterNiche, setFilterNiche] = useState("전체");              // 결과 목록 필터 (수집 조건과 분리)
-  const [lastScan, setLastScan] = useState<{ title: string; keywords: string[] } | null>(null);
+  const [lastScan, setLastScan] = useState<{ title: string; keywords: string[]; langFallback?: string; searchEngine?: string; lang?: string } | null>(null);
   const [maxSubs, setMaxSubs] = useState("50000");
   const [maxViews, setMaxViews] = useState("20000");
   const [dayRange, setDayRange] = useState("7");
@@ -395,7 +395,7 @@ export default function HunterPage() {
       }
       setVideos(data.videos ?? []);
       setFilterNiche("전체");
-      setLastScan({ title: data.title ?? "", keywords: data.keywordsUsed ?? [] });
+      setLastScan({ title: data.title ?? "", keywords: data.keywordsUsed ?? [], langFallback: data.langFallback, searchEngine: data.searchEngine, lang: data.lang });
       // DB에 검색 결과 저장
       try {
         await fetch("/api/hunter/history", {
@@ -525,6 +525,17 @@ export default function HunterPage() {
             {lastScan.keywords.map(k => (
               <code key={k} style={{ padding: "1px 6px", borderRadius: 4, background: "var(--bg-input)", fontSize: 10 }}>{k}</code>
             ))}
+            {lastScan.searchEngine && (
+              <span className="badge badge-gray" style={{ fontSize: 9 }} title="yt-dlp 검색은 YouTube Data API 쿼터를 쓰지 않습니다">
+                검색: {lastScan.searchEngine === "yt-dlp" ? "yt-dlp (쿼터 0)" : lastScan.searchEngine === "mixed" ? "yt-dlp + Data API" : "Data API"}
+              </span>
+            )}
+            {lastScan.langFallback === "full" && (
+              <span style={{ color: "#fbbf24" }}>· 선택한 언어의 키워드가 이 분야에 없어 영어 키워드로 검색했습니다 (언어 메타데이터로 걸러냄 — 정확히 찾으려면 그 언어로 키워드를 직접 입력하세요)</span>
+            )}
+            {lastScan.langFallback === "partial" && (
+              <span style={{ color: "#fbbf24" }}>· 선택한 언어의 키워드가 부족해 일부 영어 키워드로 보충했습니다</span>
+            )}
           </div>
         )}
 
