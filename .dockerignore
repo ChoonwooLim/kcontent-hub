@@ -6,3 +6,5 @@ node_modules
 npm-debug.log*
 .git
 README.md
+media
+tmp_downloads

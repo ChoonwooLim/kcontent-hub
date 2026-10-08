@@ -4,12 +4,15 @@ import { useRouter } from "next/navigation";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
   Sparkles, Check, Link2, Loader, AlertCircle,
-  Save, FolderOpen, Trash2, Clock, Camera, Languages, ArrowRight, Maximize2, Minimize2
+  Save, FolderOpen, Trash2, Clock, Camera, Languages, ArrowRight, Maximize2, Minimize2,
+  Share2, Copy, ExternalLink, Clapperboard
 } from "lucide-react";
 import {
   LANGS, LANG_CODES, type LangCode, isLangCode,
   detectLangFromTexts, fontStackFor, toSRT, toVTT, normalizeCues,
 } from "@/lib/subtitle-lang";
+import { SUBTITLE_PRESETS } from "@/lib/subtitle-presets";
+import type { ShareDto } from "@/lib/share-types";
 
 /* ── 타입 ────────────────────────────────────────────────── */
 type SubLine = {
@@ -50,12 +53,8 @@ const TYPE_LABELS: Record<string, string> = {
   commentary: "해설",
 };
 
-const FONT_PRESETS = [
-  { name: "기본 흰색", color: "#ffffff", bg: "rgba(0,0,0,0.7)", font: "Inter" },
-  { name: "노란 강조", color: "#fbbf24", bg: "rgba(0,0,0,0.8)", font: "Outfit" },
-  { name: "K-뉴스", color: "#ffffff", bg: "rgba(239,68,68,0.85)", font: "Outfit" },
-  { name: "모노 코드", color: "#7c85f0", bg: "rgba(10,10,20,0.9)", font: "JetBrains Mono" },
-];
+// 자막 스타일 프리셋 — 공유 뷰어·MP4 렌더링과 공통 (src/lib/subtitle-presets.ts)
+const FONT_PRESETS = SUBTITLE_PRESETS;
 
 const STYLE_LABELS: Record<TranslateStyle, { label: string; hint: string }> = {
   broadcast: { label: "방송 윤문", hint: "예능·다큐 작가 톤으로 맛깔나게 각색" },
@@ -188,6 +187,11 @@ export default function StudioPage() {
   const [translateEngine, setTranslateEngine] = useState<string | null>(null);                  // 서버 번역 엔진 라벨
   const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);   // 플레이어 컨테이너 전체화면 (자막 오버레이 포함)
+  // 공유 링크 · 자막 번인 MP4
+  const [shares, setShares] = useState<ShareDto[]>([]);
+  const [shareBusy, setShareBusy] = useState<string | null>(null);   // "create" | token
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [sharePublic, setSharePublic] = useState(false);
 
   // 추가된 단일 썸네일 대신 배열 사용
   const [capturedThumbnails, setCapturedThumbnails] = useState<string[]>([]);
@@ -464,6 +468,98 @@ export default function StudioPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleFullscreen, videoId, isFileMode]);
+
+  /* ── 공유 링크 · 자막 번인 MP4 ───────────────────────── */
+  const loadShares = useCallback(async () => {
+    if (!videoId && !fileVideoUrl) { setShares([]); return; }
+    try {
+      const q = videoId ? `videoId=${encodeURIComponent(videoId)}` : `fileVideoUrl=${encodeURIComponent(fileVideoUrl)}`;
+      const res = await fetch(`/api/share?${q}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setShares(data.shares ?? []);
+    } catch { /* ignore */ }
+  }, [videoId, fileVideoUrl]);
+
+  useEffect(() => { loadShares(); }, [loadShares]);
+
+  // 렌더링 진행 중인 공유가 있으면 4초마다 상태 갱신
+  useEffect(() => {
+    const inFlight = shares.filter(s => s.renderStatus === "queued" || s.renderStatus === "rendering");
+    if (inFlight.length === 0) return;
+    const id = setInterval(async () => {
+      for (const s of inFlight) {
+        try {
+          const r = await fetch(`/api/share/${s.token}/render`, { cache: "no-store" });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok) {
+            setShares(prev => prev.map(x => x.token === s.token
+              ? { ...x, renderStatus: d.status, renderProgress: d.progress ?? 0, renderError: d.error ?? null, downloadUrl: d.downloadUrl ?? null }
+              : x));
+          }
+        } catch { /* 다음 폴링 */ }
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [shares]);
+
+  const flashShare = (m: string) => { setShareMsg(m); setTimeout(() => setShareMsg(null), 3500); };
+  const absUrl = (p: string) => (typeof window !== "undefined" ? `${window.location.origin}${p}` : p);
+  const copyText = async (text: string) => {
+    try { await navigator.clipboard.writeText(text); flashShare("✓ 공유 링크를 복사했습니다"); }
+    catch { flashShare(`링크: ${text}`); }
+  };
+
+  const handleCreateShare = async () => {
+    if (!subs.length) return;
+    setShareBusy("create");
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: videoTitle, videoId: videoId || null, fileVideoUrl: fileVideoUrl || null,
+          subs, sourceLang, activeLang, secondaryLang: secondaryLang || null, preset, overlayPos, isPublic: sharePublic,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { flashShare(`✗ ${data.error || "공유 링크 생성 실패"}`); return; }
+      setShares(prev => [data.share, ...prev]);
+      await copyText(absUrl(data.share.url));
+    } catch (e) { flashShare(`✗ ${String(e)}`); }
+    finally { setShareBusy(null); }
+  };
+
+  const handlePatchShare = async (token: string, patch: Record<string, unknown>) => {
+    setShareBusy(token);
+    try {
+      const res = await fetch(`/api/share/${token}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { flashShare(`✗ ${d.error || "변경 실패"}`); return; }
+      setShares(prev => prev.map(s => (s.token === token ? d.share : s)));
+    } finally { setShareBusy(null); }
+  };
+
+  const handleDeleteShare = async (token: string) => {
+    if (!confirm("이 공유 링크를 삭제할까요? 렌더링된 MP4 도 함께 삭제됩니다.")) return;
+    setShareBusy(token);
+    try {
+      const res = await fetch(`/api/share/${token}`, { method: "DELETE" });
+      if (res.ok) setShares(prev => prev.filter(s => s.token !== token));
+    } finally { setShareBusy(null); }
+  };
+
+  const handleRender = async (token: string, force = false) => {
+    setShareBusy(token);
+    try {
+      const res = await fetch(`/api/share/${token}/render`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 409) { flashShare(`✗ ${d.error || "렌더링 시작 실패"}`); return; }
+      setShares(prev => prev.map(s => (s.token === token
+        ? { ...s, renderStatus: d.status ?? "queued", renderProgress: d.progress ?? 0, renderError: d.error ?? null, downloadUrl: d.downloadUrl ?? null }
+        : s)));
+      flashShare("렌더링을 시작했습니다. 완료되면 MP4 다운로드 버튼이 나타납니다 (영상 길이에 따라 수 분 소요).");
+    } finally { setShareBusy(null); }
+  };
 
   /* ── 현재 시간 싱크 (100ms 간격) — YouTube 모드만 ──────── */
   useEffect(() => {
@@ -1562,6 +1658,86 @@ export default function StudioPage() {
                       }}
                     />
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 공유 링크 · 자막 번인 MP4 */}
+          {(videoId || isFileMode) && (
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ ...sectionTitle, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Share2 size={13} color="#818cf8" /> 공유 · MP4 렌더링
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 10 }}>
+                현재 자막 상태(언어 트랙·스타일·위치)로 공유 링크를 만듭니다. 받은 사람은 로그인만 하면 등급과 무관하게 볼 수 있고,
+                자막을 입힌 MP4 를 만들어 두면 내려받을 수도 있습니다.
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-muted)", cursor: "pointer", marginBottom: 8 }}>
+                <input type="checkbox" checked={sharePublic} onChange={e => setSharePublic(e.target.checked)} style={{ accentColor: "var(--brand)" }} />
+                로그인 없이 링크만으로 공개
+              </label>
+              <button
+                className="btn btn-brand btn-sm" style={{ gap: 6, width: "100%", justifyContent: "center" }}
+                disabled={subs.length === 0 || shareBusy === "create"} onClick={handleCreateShare}
+              >
+                {shareBusy === "create"
+                  ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />만드는 중...</>
+                  : <><Share2 size={12} />공유 링크 만들기 (링크 복사)</>}
+              </button>
+              {shareMsg && (
+                <div style={{ fontSize: 11, color: shareMsg.startsWith("✗") ? "#f87171" : "#34d399", marginTop: 8, wordBreak: "break-all" }}>{shareMsg}</div>
+              )}
+
+              {shares.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                  {shares.map(s => {
+                    const busy = shareBusy === s.token;
+                    const url = absUrl(s.url);
+                    const rendering = s.renderStatus === "queued" || s.renderStatus === "rendering";
+                    return (
+                      <div key={s.token} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-default)", background: "var(--bg-elevated)", fontSize: 11 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                          <code style={{ flex: 1, fontSize: 10, color: "#a5b4fc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</code>
+                          <button className="btn-icon" title="링크 복사" onClick={() => copyText(url)}><Copy size={12} /></button>
+                          <a className="btn-icon" title="새 탭에서 열기" href={s.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /></a>
+                          <button className="btn-icon" title="공유 삭제" disabled={busy} onClick={() => handleDeleteShare(s.token)} style={{ opacity: 0.6 }}><Trash2 size={12} color="#f87171" /></button>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", color: "var(--text-muted)" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                            <input type="checkbox" checked={s.isPublic} disabled={busy} onChange={e => handlePatchShare(s.token, { isPublic: e.target.checked })} style={{ accentColor: "var(--brand)" }} />
+                            {s.isPublic ? "공개 (로그인 불필요)" : "로그인한 회원만"}
+                          </label>
+                          <span>· 조회 {s.views}</span>
+                          {s.activeLang && <span>· {LANGS[s.activeLang].flag} {LANGS[s.activeLang].short}{s.secondaryLang ? ` + ${LANGS[s.secondaryLang].short}` : ""}</span>}
+                          <span>· {new Date(s.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div style={{ marginTop: 8 }}>
+                          {s.renderStatus === "done" && s.downloadUrl ? (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <a className="btn btn-green btn-sm" href={s.downloadUrl} style={{ gap: 6, fontSize: 11, textDecoration: "none" }}><Download size={12} />자막 입힌 MP4 다운로드</a>
+                              <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={busy} onClick={() => handleRender(s.token, true)}>다시 렌더링</button>
+                            </div>
+                          ) : rendering ? (
+                            <div>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Loader size={10} style={{ animation: "spin 1s linear infinite" }} />{s.renderStatus === "queued" ? "렌더링 대기 중" : "자막 입힌 MP4 만드는 중"}</span>
+                                <span>{s.renderProgress}%</span>
+                              </div>
+                              <div className="progress-track"><div className="progress-fill" style={{ width: `${s.renderProgress}%`, background: "var(--gradient-brand)" }} /></div>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                              <button className="btn btn-ghost btn-sm" style={{ gap: 6, fontSize: 11 }} disabled={busy} onClick={() => handleRender(s.token, s.renderStatus === "failed")}>
+                                <Clapperboard size={12} />자막 입힌 MP4 만들기{s.renderStatus === "failed" ? " (다시 시도)" : ""}
+                              </button>
+                              {s.renderStatus === "failed" && <span style={{ color: "#f87171" }}>실패: {s.renderError}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -24,7 +24,9 @@ export default function LoginPage() {
       if (res?.error) {
         setError("이메일이나 비밀번호가 맞지 않거나, 비활성화된 계정입니다.");
       } else {
-        window.location.href = "/dashboard";
+        // 공유 링크 등에서 넘어온 경우 원래 페이지로 (같은 사이트 경로만 허용)
+        const cb = new URLSearchParams(window.location.search).get("callbackUrl");
+        window.location.href = cb && cb.startsWith("/") && !cb.startsWith("//") ? cb : "/dashboard";
       }
     } catch {
       setError("오류가 발생했습니다.");

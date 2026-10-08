@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 미디어 산출물 (다운로드 원본·렌더링 결과·폰트) — 운영에서는 /app/media 볼륨
+/media/
+/tmp_downloads/
