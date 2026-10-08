@@ -23,4 +23,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Billing integration (Stripe)
 - Advanced AI features (B-roll insertion, TTS voice cloning)
 - CI/CD & E2E Testing (Jest/Playwright)
+**Subtitle Translation Engine (2026-10-09):**
+- `TRANSLATE_PROVIDER=openclaw` routes subtitle translation to the OpenClaw gateway on twinverse-ai (OpenAI-compatible `POST /v1/chat/completions`, model `openclaw/<OPENCLAW_AGENT_ID>`, default agent `codex-pro`). Env: `OPENCLAW_GATEWAY_URL` (`http://192.168.219.117:18790`, LAN only), `OPENCLAW_TOKEN` (Orbitron secrets), `OPENCLAW_AGENT_ID`, `TRANSLATE_FALLBACK` (`openai` default | `none`).
+- Otherwise OpenAI GPT-4o (`OPENAI_API_KEY`). Whisper extraction always uses OpenAI.
+- Translation runs as an async job (`POST {async:true}` → `202 {jobId}` → `GET ?job=`) because the Orbitron proxy times out at ~60s; the UI polls and shows the engine actually used, including any OpenAI fallback.
+- Values SSOT: `C:\WORK\infra-docs\ai-shared-registry.md` §3.5. Gateway details: `C:\WORK\llm-wiki\40-Tools\OpenClaw.md`.
 <!-- END:kcontent-hub-context -->

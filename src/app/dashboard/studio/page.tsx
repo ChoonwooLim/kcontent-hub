@@ -185,6 +185,8 @@ export default function StudioPage() {
   const [overlayPos, setOverlayPos] = useState<"bottom" | "top">("bottom");  // 오버레이 위치 (영상에 구워진 자막과 겹침 회피)
   const [showYtCaptions, setShowYtCaptions] = useState(false);               // YouTube 플레이어 자체 CC 표시 여부 (기본 숨김)
   const ytCaptionsRef = useRef(false);
+  const [translateEngine, setTranslateEngine] = useState<string | null>(null);                  // 서버 번역 엔진 라벨
+  const [translateProgress, setTranslateProgress] = useState<{ done: number; total: number } | null>(null);
 
   // 추가된 단일 썸네일 대신 배열 사용
   const [capturedThumbnails, setCapturedThumbnails] = useState<string[]>([]);
@@ -571,19 +573,21 @@ export default function StudioPage() {
     finally { setSubtitleLoading(null); }
   };
 
-  /* ── ② 번역 (활성 트랙 → 대상 언어) ────────────────────── */
+  /* ── ② 번역 (활성 트랙 → 대상 언어) — 비동기 작업 + 폴링 ─────── */
   const handleTranslate = async () => {
     const src: LangCode | null = activeLang ?? sourceLang;
     if (!subs.length || targetLang === src) return;
     setSubtitleLoading("translate");
     setSubtitleError(null);
     setTranslateMessage(null);
+    setTranslateProgress(null);
     try {
       const res = await fetch("/api/studio/subtitle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "translate",
+          async: true,
           subs: subs.map(({ id, start, end, text, type }) => ({ id, start, end, text, type })),
           sourceLang: src,
           targetLang,
@@ -599,7 +603,25 @@ export default function StudioPage() {
       try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
       if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
 
-      const byId = new Map<number, string>((data.subs as SubLine[]).map(s => [s.id, s.text]));
+      // 비동기 작업이면 완료까지 폴링 (2초 간격, 최대 15분)
+      let result = data;
+      if (data.jobId) {
+        setTranslateProgress({ done: 0, total: data.total || 1 });
+        const deadline = Date.now() + 15 * 60 * 1000;
+        for (;;) {
+          await new Promise(r => setTimeout(r, 2000));
+          const jr = await fetch(`/api/studio/subtitle?job=${encodeURIComponent(data.jobId)}`);
+          let jd: { status?: string; done?: number; total?: number; error?: string; subs?: SubLine[]; message?: string } = {};
+          try { jd = await jr.json(); } catch { /* 일시 오류 → 다음 폴링 */ }
+          if (!jr.ok) { setSubtitleError(jd.error || `번역 작업 조회 실패 (${jr.status})`); return; }
+          if (jd.status === "failed") { setSubtitleError(jd.error || "번역 실패"); return; }
+          if (jd.status === "done") { result = jd; break; }
+          setTranslateProgress({ done: jd.done ?? 0, total: jd.total ?? 1 });
+          if (Date.now() > deadline) { setSubtitleError("번역이 15분을 넘겨 중단했습니다. 다시 시도하세요."); return; }
+        }
+      }
+
+      const byId = new Map<number, string>((result.subs as SubLine[]).map(s => [s.id, s.text]));
       setSubs(prev => prev.map(s => {
         const tr = byId.get(s.id) ?? s.text;
         // 번역 전 텍스트가 어느 트랙에도 없었다면 원본 트랙으로 보존
@@ -609,9 +631,9 @@ export default function StudioPage() {
       if (!sourceLang && src) setSourceLang(src);
       setActiveLang(targetLang);
       setSubtitleStep("translated");
-      setTranslateMessage(data.message || `${LANGS[targetLang].label} 번역 완료`);
+      setTranslateMessage(result.message || `${LANGS[targetLang].label} 번역 완료`);
     } catch (e) { setSubtitleError(String(e)); }
-    finally { setSubtitleLoading(null); }
+    finally { setSubtitleLoading(null); setTranslateProgress(null); }
   };
 
   /* ── SRT/VTT 내보내기 (활성 트랙 · 이중 자막) ──────────── */
@@ -660,6 +682,14 @@ export default function StudioPage() {
   }, []);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  /* ── 번역 엔진 정보 (OpenClaw / OpenAI) ───────────────── */
+  useEffect(() => {
+    fetch("/api/studio/subtitle?config=1")
+      .then(r => r.json())
+      .then(d => { if (d?.engine) setTranslateEngine(d.note ? `${d.engine} (${d.note})` : d.engine); })
+      .catch(() => { /* 라벨 없이 진행 */ });
+  }, []);
 
   /* ── 세션 저장 ───────────────────────────────────────── */
   const handleSaveSession = async () => {
@@ -1299,10 +1329,13 @@ export default function StudioPage() {
                     onClick={handleTranslate}
                   >
                     {subtitleLoading === "translate"
-                      ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{LANGS[targetLang].label} 번역 중 (GPT-4o)...</>
-                      : <><Languages size={12} />② {LANGS[targetLang].label} 번역 (GPT-4o)</>
+                      ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{LANGS[targetLang].label} 번역 중{translateProgress ? ` (${translateProgress.done}/${translateProgress.total} 청크)` : ""}...</>
+                      : <><Languages size={12} />② {LANGS[targetLang].label} 번역</>
                     }
                   </button>
+                  {translateEngine && (
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>엔진: {translateEngine}</div>
+                  )}
                   {translateMessage && (
                     <div style={{ fontSize: 10, color: "#818cf8", marginLeft: 4 }}>✓ {translateMessage}</div>
                   )}

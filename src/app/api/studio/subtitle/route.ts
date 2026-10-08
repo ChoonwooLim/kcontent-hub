@@ -422,67 +422,223 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T,
   return results;
 }
 
-/** 한 청크(최대 30줄) 번역 */
+/* ── 번역 엔진 (OpenClaw 게이트웨이 / OpenAI GPT-4o) ─────────────
+ * TRANSLATE_PROVIDER=openclaw 이면 twinverse-ai 의 OpenClaw 게이트웨이(OpenAI 호환 HTTP)로 번역한다.
+ *   OPENCLAW_GATEWAY_URL  예) http://192.168.219.117:18790   (socat 프록시, LAN 전용)
+ *   OPENCLAW_TOKEN        게이트웨이 gateway.auth.token (Orbitron secrets)
+ *   OPENCLAW_AGENT_ID     기본 codex-pro  → model "openclaw/codex-pro"
+ *   TRANSLATE_FALLBACK    openai(기본) | none — OpenClaw 실패 시 OpenAI 대체 여부 (대체 시 메시지에 표시)
+ * 그 외에는 OpenAI GPT-4o (OPENAI_API_KEY).
+ */
+type Provider = "openai" | "openclaw";
+type ChatMessage = { role: "system" | "user"; content: string };
+
+type EngineConfig = {
+  provider: Provider;
+  openaiKey: string | null;
+  openclaw: { url: string; token: string; agent: string } | null;
+  fallbackToOpenAI: boolean;
+  note?: string;
+};
+
+function loadEngineConfig(): EngineConfig {
+  const openaiKey = process.env.OPENAI_API_KEY || null;
+  const url = (process.env.OPENCLAW_GATEWAY_URL || "").trim().replace(/\/+$/, "");
+  const token = (process.env.OPENCLAW_TOKEN || "").trim();
+  const agent = (process.env.OPENCLAW_AGENT_ID || "codex-pro").trim();
+  const openclaw = url && token ? { url, token, agent } : null;
+  const wanted = (process.env.TRANSLATE_PROVIDER || "openai").trim().toLowerCase();
+  const provider: Provider = wanted === "openclaw" && openclaw ? "openclaw" : "openai";
+  const fallbackToOpenAI = (process.env.TRANSLATE_FALLBACK || "openai").trim().toLowerCase() !== "none" && !!openaiKey;
+  const note = wanted === "openclaw" && !openclaw
+    ? "OpenClaw 설정 누락(OPENCLAW_GATEWAY_URL / OPENCLAW_TOKEN) → OpenAI 사용 중"
+    : undefined;
+  return { provider, openaiKey, openclaw, fallbackToOpenAI, note };
+}
+
+function engineLabel(cfg: EngineConfig, provider: Provider): string {
+  return provider === "openclaw" ? `OpenClaw · ${cfg.openclaw?.agent ?? "?"}` : "OpenAI GPT-4o";
+}
+
+function chunkSizeFor(cfg: EngineConfig): number {
+  // OpenClaw 는 호출당 에이전트 컨텍스트 오버헤드(약 18k 토큰)가 커서 청크를 키운다
+  return cfg.provider === "openclaw" ? 60 : 30;
+}
+
+/** 응답 본문에서 JSON 객체를 관대하게 추출 (코드펜스·앞뒤 설명문 허용 — 에이전트 응답 대비) */
+function extractJson(content: string): unknown {
+  const trimmed = content.trim();
+  try { return JSON.parse(trimmed); } catch { /* 계속 */ }
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) { try { return JSON.parse(fence[1].trim()); } catch { /* 계속 */ } }
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(trimmed.slice(first, last + 1)); } catch { /* 계속 */ }
+  }
+  throw new Error("응답에서 JSON을 찾을 수 없습니다");
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") throw new Error(`응답 시간 초과 (${Math.round(ms / 1000)}초)`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function chatOpenAI(key: string, messages: ChatMessage[]): Promise<string> {
+  const res = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "gpt-4o", temperature: 0.3, messages, response_format: { type: "json_object" } }),
+  }, 120000);
+  if (!res.ok) throw new Error(`OpenAI 오류 (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "{}";
+}
+
+/** OpenClaw 게이트웨이 OpenAI 호환 엔드포인트 — 에이전트 실행이라 20~90초 걸릴 수 있음. response_format 미지원이라 관대 파싱 */
+async function chatOpenClaw(oc: { url: string; token: string; agent: string }, messages: ChatMessage[]): Promise<string> {
+  const res = await fetchWithTimeout(`${oc.url}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${oc.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: `openclaw/${oc.agent}`, temperature: 0.3, max_tokens: 6000, messages }),
+  }, 180000);
+  if (!res.ok) throw new Error(`OpenClaw 오류 (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content.trim()) throw new Error("OpenClaw 응답이 비어 있습니다");
+  return content;
+}
+
+type ChunkResult = { subs: Sub[]; engine: Provider; fallbackReason?: string };
+
+/** 한 청크 번역 — 1차 엔진 2회 시도, 그래도 실패하면 (허용 시) OpenAI 로 대체하고 사유를 남긴다 */
 async function translateChunk(
+  cfg: EngineConfig,
   chunk: Sub[],
-  openaiKey: string,
   systemPrompt: string,
   source: LangCode | null,
   target: LangCode,
-): Promise<Sub[]> {
-  const chunkText = chunk.map((s, idx) => `[${idx}] ${s.text}`).join("\n");
+): Promise<ChunkResult> {
   const srcName = source ? LANGS[source].native : "the source language";
+  const chunkText = chunk.map((s, idx) => `[${idx}] ${s.text}`).join("\n");
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: `Translate the following ${srcName} subtitles into ${LANGS[target].native}. Each line is prefixed with its [idx].\n\n${chunkText}` },
+  ];
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openaiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      temperature: 0.3,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Translate the following ${srcName} subtitles into ${LANGS[target].native}. Each line is prefixed with its [idx].\n\n${chunkText}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-    }),
+  const apply = (content: string): Sub[] => {
+    const parsed = extractJson(content) as { translations?: unknown; result?: unknown } | unknown[];
+    const raw = Array.isArray(parsed)
+      ? parsed
+      : (parsed as { translations?: unknown }).translations ?? (parsed as { result?: unknown }).result ?? [];
+    const list = raw as { idx: number; text?: string; ko?: string; translation?: string }[];
+    if (!Array.isArray(list) || list.length === 0) throw new Error("번역 결과가 비어 있습니다");
+    return chunk.map((s, idx) => {
+      const tr = list.find(t => Number(t.idx) === idx);
+      const text = (tr?.text ?? tr?.ko ?? tr?.translation ?? "").toString().trim();
+      return { ...s, text: text || s.text };
+    });
+  };
+
+  const run = async (provider: Provider): Promise<Sub[]> => {
+    if (provider === "openclaw") {
+      if (!cfg.openclaw) throw new Error("OpenClaw 설정 없음");
+      return apply(await chatOpenClaw(cfg.openclaw, messages));
+    }
+    if (!cfg.openaiKey) throw new Error("OpenAI API 키 없음");
+    return apply(await chatOpenAI(cfg.openaiKey, messages));
+  };
+
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return { subs: await run(cfg.provider), engine: cfg.provider };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (cfg.provider === "openclaw" && cfg.fallbackToOpenAI) {
+    const reason = String(lastErr instanceof Error ? lastErr.message : lastErr).slice(0, 160);
+    return { subs: await run("openai"), engine: "openai", fallbackReason: reason };
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+type TranslateParams = { subs: Sub[]; sourceLang: LangCode | null; targetLang: LangCode; style: TranslateStyle };
+type TranslateResult = {
+  subs: Sub[]; engine: string; message: string;
+  sourceLang: LangCode | null; targetLang: LangCode; style: TranslateStyle;
+};
+
+async function runTranslation(
+  cfg: EngineConfig,
+  p: TranslateParams,
+  onProgress?: (done: number, total: number) => void,
+): Promise<TranslateResult> {
+  const systemPrompt = buildSystemPrompt(p.sourceLang, p.targetLang, p.style);
+  const chunkSize = chunkSizeFor(cfg);
+  const concurrency = cfg.provider === "openclaw" ? 2 : 3; // 게이트웨이는 에이전트 실행이 무거워 동시 호출을 줄인다
+  const chunks: Sub[][] = [];
+  for (let i = 0; i < p.subs.length; i += chunkSize) chunks.push(p.subs.slice(i, i + chunkSize));
+
+  let done = 0;
+  const results = await mapWithConcurrency(chunks, concurrency, async chunk => {
+    const r = await translateChunk(cfg, chunk, systemPrompt, p.sourceLang, p.targetLang);
+    done++;
+    onProgress?.(done, chunks.length);
+    return r;
   });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`번역 API 오류 (${res.status}): ${errText.slice(0, 200)}`);
-  }
+  const subs = results.flatMap(r => r.subs);
+  const engines = [...new Set(results.map(r => r.engine))];
+  const fallback = results.find(r => r.fallbackReason);
+  const engine = engines.length === 1
+    ? engineLabel(cfg, engines[0])
+    : `${engineLabel(cfg, cfg.provider)} + OpenAI 폴백 일부`;
+  const styleLabel = p.style === "faithful" ? "원문 충실" : "방송 윤문";
+  const message =
+    `${p.sourceLang ? LANGS[p.sourceLang].label : "원본"} → ${LANGS[p.targetLang].label} 번역 완료 (${subs.length}줄 · ${styleLabel} · ${engine})`
+    + (fallback ? ` ⚠ OpenClaw 실패로 OpenAI 대체: ${fallback.fallbackReason}` : "")
+    + (cfg.note ? ` ⚠ ${cfg.note}` : "");
+  return { subs, engine, message, sourceLang: p.sourceLang, targetLang: p.targetLang, style: p.style };
+}
 
-  const data = await res.json();
-  let translations: { idx: number; text?: string; ko?: string; translation?: string }[] = [];
-  try {
-    const content = data.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(content);
-    translations = parsed.translations || parsed.result || (Array.isArray(parsed) ? parsed : []);
-  } catch {
-    translations = [];
-  }
+/* ── 비동기 번역 작업 — Orbitron 프록시 ~60초 한도 회피 (즉시 jobId 반환 → 클라이언트 폴링) ── */
+type TranslateJob = {
+  id: string;
+  status: "running" | "done" | "failed";
+  total: number;
+  done: number;
+  createdAt: number;
+  result?: TranslateResult;
+  error?: string;
+};
+const JOB_TTL_MS = 30 * 60 * 1000;
+const jobStore = globalThis as unknown as { __subtitleTranslateJobs?: Map<string, TranslateJob> };
+const jobs: Map<string, TranslateJob> = jobStore.__subtitleTranslateJobs ??= new Map();
 
-  return chunk.map((s, idx) => {
-    const tr = translations.find(t => Number(t.idx) === idx);
-    const text = (tr?.text ?? tr?.ko ?? tr?.translation ?? "").toString().trim();
-    return { ...s, text: text || s.text };
-  });
+function pruneJobs() {
+  const now = Date.now();
+  for (const [id, j] of jobs) if (now - j.createdAt > JOB_TTL_MS) jobs.delete(id);
 }
 
 /**
  * POST /api/studio/subtitle
  * body:
  *   { action: "extract", videoId?, fileVideoUrl?, sourceLang?: "ko"|"en"|"ja"|"zh"|"zh-Hant"|null, mergeFragments?: boolean }
- *   { action: "translate", subs, sourceLang?: LangCode|null, targetLang: LangCode, style?: "broadcast"|"faithful" }
+ *   { action: "translate", subs, sourceLang?: LangCode|null, targetLang: LangCode, style?: "broadcast"|"faithful", async?: boolean }
+ *     async=true 면 202 + { jobId } 를 즉시 반환하고 GET ?job=<jobId> 로 진행/결과를 폴링한다.
  *
  * extract:   YouTube CC(원본 언어 트랙 우선) → 실패 시 yt-dlp 오디오 + Whisper 음성 분석. 감지된 언어 코드 반환.
- * translate: 자막을 한국어·영어·일본어·중국어(간체/번체) 중 선택한 언어로 번역 (GPT-4o). 어느 언어에서 어느 언어로든 가능.
+ * translate: 자막을 한국어·영어·일본어·중국어(간체/번체) 중 선택한 언어로 번역. 엔진은 OpenClaw 게이트웨이(TRANSLATE_PROVIDER=openclaw) 또는 OpenAI GPT-4o.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -602,7 +758,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "fileVideoUrl 또는 videoId가 필요합니다." }, { status: 400 });
     }
 
-    // ── 2. 다국어 번역 (GPT-4o) — ko / en / ja / zh 상호 변환 ──
+    // ── 2. 다국어 번역 — ko / en / ja / zh / zh-Hant 상호 변환 (OpenClaw 게이트웨이 또는 OpenAI GPT-4o) ──
     if (action === "translate") {
       const subs = (body.subs as Sub[] | undefined)?.map(s => ({
         id: s.id, start: s.start, end: s.end, type: s.type, text: String(s.text ?? ""),
@@ -621,33 +777,65 @@ export async function POST(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다." }, { status: 500 });
+      const cfg = loadEngineConfig();
+      if (!cfg.openaiKey && !cfg.openclaw) {
+        return NextResponse.json({
+          error: "번역 엔진이 설정되지 않았습니다. OPENAI_API_KEY 또는 OPENCLAW_GATEWAY_URL/OPENCLAW_TOKEN 을 설정하세요.",
+        }, { status: 500 });
+      }
+      const params: TranslateParams = { subs, sourceLang, targetLang, style };
 
-      const systemPrompt = buildSystemPrompt(sourceLang, targetLang, style);
+      // 비동기 모드: 즉시 jobId 반환 → GET ?job=<id> 로 폴링 (프록시 타임아웃 회피)
+      if (body.async) {
+        pruneJobs();
+        const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        const job: TranslateJob = {
+          id, status: "running", done: 0, createdAt: Date.now(),
+          total: Math.max(1, Math.ceil(subs.length / chunkSizeFor(cfg))),
+        };
+        jobs.set(id, job);
+        void runTranslation(cfg, params, (done, total) => { job.done = done; job.total = total; })
+          .then(result => { job.status = "done"; job.result = result; })
+          .catch(e => { job.status = "failed"; job.error = String(e instanceof Error ? e.message : e).slice(0, 300); });
+        return NextResponse.json(
+          { jobId: id, status: "running", done: 0, total: job.total, engine: engineLabel(cfg, cfg.provider) },
+          { status: 202 },
+        );
+      }
 
-      const CHUNK_SIZE = 30;
-      const chunks: Sub[][] = [];
-      for (let i = 0; i < subs.length; i += CHUNK_SIZE) chunks.push(subs.slice(i, i + CHUNK_SIZE));
-
-      // 청크 3개씩 병렬 처리 (긴 영상 번역 시간 단축, 과도한 동시 호출은 방지)
-      const translatedChunks = await mapWithConcurrency(chunks, 3, chunk =>
-        translateChunk(chunk, openaiKey, systemPrompt, sourceLang, targetLang),
-      );
-      const translated = translatedChunks.flat();
-
-      return NextResponse.json({
-        success: true,
-        subs: translated,
-        sourceLang,
-        targetLang,
-        style,
-        message: `${sourceLang ? LANGS[sourceLang].label : "원본"} → ${LANGS[targetLang].label} 번역 완료 (${translated.length}줄 · ${style === "faithful" ? "원문 충실" : "방송 윤문"})`,
-      });
+      const result = await runTranslation(cfg, params);
+      return NextResponse.json({ success: true, ...result });
     }
 
     return NextResponse.json({ error: "action은 'extract' 또는 'translate'여야 합니다." }, { status: 400 });
   } catch (e) {
     return NextResponse.json({ error: `서버 오류: ${String(e).slice(0, 300)}` }, { status: 500 });
   }
+}
+
+/**
+ * GET /api/studio/subtitle?job=<id>   → 비동기 번역 작업 상태/결과
+ * GET /api/studio/subtitle?config=1   → 현재 번역 엔진 정보 (UI 라벨용)
+ */
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const jobId = url.searchParams.get("job");
+  if (jobId) {
+    const job = jobs.get(jobId);
+    if (!job) return NextResponse.json({ error: "번역 작업을 찾을 수 없습니다 (만료되었거나 서버가 재시작됨). 다시 시도하세요." }, { status: 404 });
+    if (job.status === "done") return NextResponse.json({ status: "done", success: true, ...job.result });
+    if (job.status === "failed") return NextResponse.json({ status: "failed", error: job.error });
+    return NextResponse.json({ status: "running", done: job.done, total: job.total });
+  }
+  if (url.searchParams.get("config")) {
+    const cfg = loadEngineConfig();
+    return NextResponse.json({
+      provider: cfg.provider,
+      engine: engineLabel(cfg, cfg.provider),
+      agent: cfg.openclaw?.agent ?? null,
+      fallback: cfg.provider === "openclaw" ? (cfg.fallbackToOpenAI ? "openai" : "none") : null,
+      note: cfg.note ?? null,
+    });
+  }
+  return NextResponse.json({ error: "job 또는 config 파라미터가 필요합니다." }, { status: 400 });
 }
