@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { isBootstrapAdmin } from "@/lib/admin-emails";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,6 +26,9 @@ export async function POST(req: NextRequest) {
         name: name || email.split("@")[0],
         email,
         password: hashedPassword,
+        // 부트스트랩 관리자 이메일이면 관리자·VIP 로, 그 외는 일반 회원(본인 API 키 필요)
+        role: isBootstrapAdmin(email) ? "ADMIN" : "USER",
+        plan: isBootstrapAdmin(email) ? "VIP" : "FREE",
       },
     });
 

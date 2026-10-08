@@ -23,11 +23,15 @@ async function main() {
     where: { email },
     update: {
       password: hashedPassword,
+      role: 'ADMIN',
+      plan: 'VIP',
     },
     create: {
       email,
       name: 'Admin',
       password: hashedPassword,
+      role: 'ADMIN',
+      plan: 'VIP',
       workspaceMembers: {
         create: {
           workspaceId: workspace.id,

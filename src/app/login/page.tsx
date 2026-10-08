@@ -22,7 +22,7 @@ export default function LoginPage() {
         password,
       });
       if (res?.error) {
-        setError("이메일이나 비밀번호가 맞지 않습니다.");
+        setError("이메일이나 비밀번호가 맞지 않거나, 비활성화된 계정입니다.");
       } else {
         window.location.href = "/dashboard";
       }

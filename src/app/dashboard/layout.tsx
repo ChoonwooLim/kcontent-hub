@@ -1,14 +1,20 @@
 "use client";
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, redirect } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard, Search, Cpu, Film, Globe, Youtube, Settings,
   ChevronRight, Bell, BarChart2, Scissors, Map, FileText,
-  LogOut, ChevronDown, Building2, Archive, Palette
+  LogOut, ChevronDown, Building2, Archive, Palette, Users, Crown, KeyRound, Lock
 } from "lucide-react";
+import { useMe } from "@/lib/hooks/use-me";
 
-const NAV = [
+type NavItem =
+  | { section: string }
+  | { href: string; label: string; icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>; adminOnly?: boolean };
+
+const NAV: NavItem[] = [
   { section: "제작 파이프라인" },
   { href: "/dashboard", label: "파이프라인 보드", icon: LayoutDashboard },
   { href: "/dashboard/hunter", label: "소재 수집기", icon: Search },
@@ -23,8 +29,12 @@ const NAV = [
   { href: "/dashboard/analytics", label: "수익 분석", icon: BarChart2 },
   { href: "/dashboard/plan", label: "개발계획", icon: Map },
   { href: "/dashboard/changelog", label: "변경이력", icon: FileText },
-  { href: "/dashboard/settings", label: "API 설정", icon: Settings },
+  { href: "/dashboard/settings", label: "내 API 키", icon: Settings },
+  { href: "/dashboard/admin", label: "회원 관리", icon: Users, adminOnly: true },
 ];
+
+// 일반 회원이 API 키를 등록하기 전에도 열 수 있는 화면
+const OPEN_PATHS = ["/dashboard/settings", "/dashboard/plan", "/dashboard/changelog"];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -34,10 +44,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       redirect("/login");
     },
   });
+  const { me } = useMe();
+
+  // 관리자가 비활성화한 계정은 즉시 로그아웃
+  useEffect(() => {
+    if (me?.user?.disabled) signOut({ callbackUrl: "/login?error=disabled" });
+  }, [me]);
 
   if (status === "loading") {
     return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-void)", color: "var(--text-muted)" }}>인증 확인 중...</div>;
   }
+
+  const isAdmin = me?.user?.role === "ADMIN";
+  const isVip = me?.user?.plan === "VIP";
+  const tierLabel = !me ? "" : isAdmin ? "관리자" : isVip ? "VIP" : "일반 회원";
+  const tierBadge = isAdmin ? "badge-green" : isVip ? "badge-amber" : "badge-gray";
+  const locked = !!me && me.needsOpenaiKey && !OPEN_PATHS.some(p => pathname.startsWith(p));
+  const visibleNav = NAV.filter(item => !("adminOnly" in item && item.adminOnly) || isAdmin);
+  const currentLabel = visibleNav.find(n => "href" in n && n.href === pathname);
 
   return (
     <div className="app-shell">
@@ -71,17 +95,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: "10px 10px", overflowY: "auto" }}>
-          {NAV.map((item, i) => {
+          {visibleNav.map((item, i) => {
             if ("section" in item) {
               return <div key={i} className="nav-section">{item.section}</div>;
             }
             const active = pathname === item.href;
             const Icon = item.icon;
+            const itemLocked = locked && !OPEN_PATHS.some(p => item.href.startsWith(p));
             return (
-              <Link key={item.href} href={item.href} className={`nav-item ${active ? "active" : ""}`} style={{ display: "flex" }}>
+              <Link key={item.href} href={item.href} className={`nav-item ${active ? "active" : ""}`} style={{ display: "flex", opacity: itemLocked ? 0.55 : undefined }}>
                 <Icon size={15} style={{ flexShrink: 0 }} />
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {active && <ChevronRight size={12} style={{ opacity: 0.6 }} />}
+                {itemLocked ? <Lock size={11} style={{ opacity: 0.6 }} /> : active && <ChevronRight size={12} style={{ opacity: 0.6 }} />}
               </Link>
             );
           })}
@@ -112,9 +137,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Topbar */}
         <header className="topbar">
           <div style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>
-            {NAV.filter(n => "href" in n && n.href === pathname).map(n => "label" in n ? n.label : "")[0] || "KContent Studio"}
+            {currentLabel && "label" in currentLabel ? currentLabel.label : "KContent Studio"}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {me?.engine && (
+              <div className="badge badge-brand" style={{ display: "flex", alignItems: "center", gap: 5 }} title="자막 번역 엔진">
+                <Cpu size={11} />
+                {me.engine}
+              </div>
+            )}
             <div className="badge badge-green" style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span className="live-dot" style={{ width: 5, height: 5 }} />
               자동화 실행 중
@@ -124,9 +155,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, background: "var(--accent-red)", borderRadius: "50%" }} />
             </button>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8, paddingLeft: 12, borderLeft: "1px solid var(--border-subtle)" }}>
-              <div style={{ textAlign: "right", display: "flex", flexDirection: "column" }}>
+              <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{session?.user?.name || session?.user?.email?.split('@')[0] || "유저"}</span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Admin</span>
+                {tierLabel && (
+                  <span className={`badge ${tierBadge}`} style={{ fontSize: 9, padding: "1px 6px", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                    {isVip && !isAdmin && <Crown size={9} />}{tierLabel}
+                  </span>
+                )}
               </div>
               <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--gradient-brand)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "white" }}>
                 {session?.user?.email?.charAt(0).toUpperCase() || "U"}
@@ -140,7 +175,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Page Content */}
         <main className="page-content">
-          {children}
+          {/* 일반 회원 — 키 미등록 안내 배너 */}
+          {me?.needsOpenaiKey && !locked && (
+            <div style={{
+              marginBottom: 16, padding: "10px 14px", borderRadius: 8, fontSize: 12,
+              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", color: "#fbbf24",
+              display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+            }}>
+              <KeyRound size={14} />
+              <span style={{ flex: 1 }}>일반 회원은 본인 OpenAI API 키를 등록해야 AI 기능 화면을 사용할 수 있습니다.</span>
+              <Link href="/dashboard/settings" className="btn btn-brand btn-sm" style={{ fontSize: 11 }}>키 등록하기</Link>
+            </div>
+          )}
+
+          {locked ? (
+            <div className="card" style={{ maxWidth: 560, margin: "40px auto", padding: 32, textAlign: "center" }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, margin: "0 auto 14px", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Lock size={22} color="#818cf8" />
+              </div>
+              <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>API 키 등록이 필요합니다</h2>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.7, marginBottom: 18 }}>
+                일반 회원은 본인의 <strong style={{ color: "var(--text-secondary)" }}>OpenAI API 키</strong>를 등록한 뒤 자막 스튜디오·대본 엔진 등 기능 화면을 이용할 수 있습니다.
+                사용량은 등록한 키의 계정으로 과금됩니다.<br />
+                VIP 회원은 키 등록 없이 OpenClaw 와 서버 공용 키를 사용합니다. VIP 전환은 관리자에게 문의하세요.
+              </p>
+              <Link href="/dashboard/settings" className="btn btn-brand" style={{ gap: 8, display: "inline-flex", padding: "10px 18px" }}>
+                <KeyRound size={15} /> 내 API 키 등록하러 가기
+              </Link>
+            </div>
+          ) : children}
         </main>
       </div>
     </div>

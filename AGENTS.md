@@ -28,4 +28,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Otherwise OpenAI GPT-4o (`OPENAI_API_KEY`). Whisper extraction always uses OpenAI.
 - Translation runs as an async job (`POST {async:true}` → `202 {jobId}` → `GET ?job=`) because the Orbitron proxy times out at ~60s; the UI polls and shows the engine actually used, including any OpenAI fallback.
 - Values SSOT: `C:\WORK\infra-docs\ai-shared-registry.md` §3.5. Gateway details: `C:\WORK\llm-wiki\40-Tools\OpenClaw.md`.
+**Users, Plans & Access (2026-10-09):**
+- `User.role` USER|ADMIN and `User.plan` FREE|VIP (Prisma enums). Bootstrap admins (`ADMIN_EMAILS` env, default admin@orbitron.io + choonwoo49@gmail.com) are auto-promoted to ADMIN/VIP on register/login. JWT callback re-reads role/plan/disabled from DB on every request so admin changes apply without re-login; disabled users are signed out.
+- FREE users must register their own OpenAI key (and YouTube key for the hunter) at `/dashboard/settings`; keys are AES-256-GCM encrypted with a key derived from `AUTH_SECRET` (`src/lib/crypto.ts`). Until the OpenAI key exists, the dashboard layout locks feature pages (`OPEN_PATHS` stay open) and APIs return `403 {code:"KEY_REQUIRED"}`.
+- VIP/ADMIN: translation via OpenClaw, Whisper/YouTube via server env keys (fallback to own key). Key resolution lives in `src/lib/access.ts` (`requireUser`, `requireAdmin`, `resolveOpenAIKey`, `resolveYoutubeKey`) and `src/lib/translate-engine.ts` (`engineForUser`).
+- Admin UI `/dashboard/admin` + API `/api/admin/users` (GET/PATCH/DELETE): plan/role changes, disable, delete, notes; guards against self-demotion and removing the last active admin. `/api/me` feeds the layout (`useMe` hook, `refreshMe()` after key saves).
 <!-- END:kcontent-hub-context -->

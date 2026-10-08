@@ -215,6 +215,16 @@ model ThumbnailAsset {
 // NextAuth & Multi-tenant (SaaS) Models
 // ---------------------------------------------------------------------
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserPlan {
+  FREE   // 일반 회원 — 본인 API 키 필요
+  VIP    // VIP 회원 — OpenClaw·서버 공용 키 사용
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -222,6 +232,13 @@ model User {
   emailVerified DateTime?
   password      String?   // For credentials provider
   image         String?
+  role          UserRole  @default(USER)
+  plan          UserPlan  @default(FREE)
+  disabled      Boolean   @default(false)   // 관리자가 비활성화한 계정
+  openaiKeyEnc  String?   @db.Text          // 본인 OpenAI 키 (AES-256-GCM 암호화)
+  youtubeKeyEnc String?   @db.Text          // 본인 YouTube Data API 키 (암호화)
+  lastLoginAt   DateTime?
+  adminNote     String?                     // 관리자 메모
   accounts      Account[]
   sessions      Session[]
   

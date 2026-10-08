@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser, resolveOpenAIKey, keyRequiredResponse } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 
 const STAGES = ["발굴 대기", "요약 편집", "HD 저장", "자막 추출", "한글 변환", "대본 생성", "배포 완료"] as const;
@@ -13,6 +14,9 @@ export async function POST(
 
   try {
     const body = await req.json();
+    const guard = await requireUser();
+    if (guard.error) return guard.error;
+    const user = guard.user;
     const { action } = body;
 
     const video = await prisma.pipelineVideo.findUnique({
@@ -23,8 +27,8 @@ export async function POST(
 
     // ── 0. AI 자동 클립 분석 ──
     if (action === "analyze_clips") {
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다" }, { status: 500 });
+      const openaiKey = resolveOpenAIKey(user); // VIP/관리자: 서버 공용 키, 일반: 본인 키
+      if (!openaiKey) return keyRequiredResponse("openai", user);
 
       // 1) YouTube 자막 추출
       let transcript: { time: string; text: string; startSec: number; endSec: number }[] = [];
@@ -299,8 +303,8 @@ ${transcriptText}`
       }
 
       const transcript = JSON.parse(video.transcriptJson) as { time: string; text: string; startSec: number; endSec: number }[];
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다" }, { status: 500 });
+      const openaiKey = resolveOpenAIKey(user); // VIP/관리자: 서버 공용 키, 일반: 본인 키
+      if (!openaiKey) return keyRequiredResponse("openai", user);
 
       // 자막을 청크로 나누기 (GPT 토큰 제한 고려)
       const CHUNK_SIZE = 30;
@@ -387,8 +391,8 @@ ${transcriptText}`
       }
 
       const translated = JSON.parse(video.translatedJson) as { time: string; ko: string; startSec: number; endSec: number }[];
-      const openaiKey = process.env.OPENAI_API_KEY;
-      if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다" }, { status: 500 });
+      const openaiKey = resolveOpenAIKey(user); // VIP/관리자: 서버 공용 키, 일반: 본인 키
+      if (!openaiKey) return keyRequiredResponse("openai", user);
 
       const subtitleText = translated.map(s => `${s.time} ${s.ko}`).join("\n");
 

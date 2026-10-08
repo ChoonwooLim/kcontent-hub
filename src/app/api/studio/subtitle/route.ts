@@ -13,6 +13,8 @@ import {
   mergeFragmentCues,
   detectChineseScript,
 } from "@/lib/subtitle-lang";
+import { requireUser, resolveOpenAIKey, keyRequiredResponse } from "@/lib/access";
+import { type EngineConfig, type Provider, engineLabel, chunkSizeFor, engineForUser } from "@/lib/translate-engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // yt-dlp + Whisper API는 시간이 걸릴 수 있음
@@ -422,48 +424,8 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T,
   return results;
 }
 
-/* ── 번역 엔진 (OpenClaw 게이트웨이 / OpenAI GPT-4o) ─────────────
- * TRANSLATE_PROVIDER=openclaw 이면 twinverse-ai 의 OpenClaw 게이트웨이(OpenAI 호환 HTTP)로 번역한다.
- *   OPENCLAW_GATEWAY_URL  예) http://192.168.219.117:18790   (socat 프록시, LAN 전용)
- *   OPENCLAW_TOKEN        게이트웨이 gateway.auth.token (Orbitron secrets)
- *   OPENCLAW_AGENT_ID     기본 codex-pro  → model "openclaw/codex-pro"
- *   TRANSLATE_FALLBACK    openai(기본) | none — OpenClaw 실패 시 OpenAI 대체 여부 (대체 시 메시지에 표시)
- * 그 외에는 OpenAI GPT-4o (OPENAI_API_KEY).
- */
-type Provider = "openai" | "openclaw";
+/* ── 번역 엔진 — 설정·등급별 선택은 src/lib/translate-engine.ts, 호출 구현은 아래 ── */
 type ChatMessage = { role: "system" | "user"; content: string };
-
-type EngineConfig = {
-  provider: Provider;
-  openaiKey: string | null;
-  openclaw: { url: string; token: string; agent: string } | null;
-  fallbackToOpenAI: boolean;
-  note?: string;
-};
-
-function loadEngineConfig(): EngineConfig {
-  const openaiKey = process.env.OPENAI_API_KEY || null;
-  const url = (process.env.OPENCLAW_GATEWAY_URL || "").trim().replace(/\/+$/, "");
-  const token = (process.env.OPENCLAW_TOKEN || "").trim();
-  const agent = (process.env.OPENCLAW_AGENT_ID || "codex-pro").trim();
-  const openclaw = url && token ? { url, token, agent } : null;
-  const wanted = (process.env.TRANSLATE_PROVIDER || "openai").trim().toLowerCase();
-  const provider: Provider = wanted === "openclaw" && openclaw ? "openclaw" : "openai";
-  const fallbackToOpenAI = (process.env.TRANSLATE_FALLBACK || "openai").trim().toLowerCase() !== "none" && !!openaiKey;
-  const note = wanted === "openclaw" && !openclaw
-    ? "OpenClaw 설정 누락(OPENCLAW_GATEWAY_URL / OPENCLAW_TOKEN) → OpenAI 사용 중"
-    : undefined;
-  return { provider, openaiKey, openclaw, fallbackToOpenAI, note };
-}
-
-function engineLabel(cfg: EngineConfig, provider: Provider): string {
-  return provider === "openclaw" ? `OpenClaw · ${cfg.openclaw?.agent ?? "?"}` : "OpenAI GPT-4o";
-}
-
-function chunkSizeFor(cfg: EngineConfig): number {
-  // OpenClaw 는 호출당 에이전트 컨텍스트 오버헤드(약 18k 토큰)가 커서 청크를 키운다
-  return cfg.provider === "openclaw" ? 60 : 30;
-}
 
 /** 응답 본문에서 JSON 객체를 관대하게 추출 (코드펜스·앞뒤 설명문 허용 — 에이전트 응답 대비) */
 function extractJson(content: string): unknown {
@@ -644,19 +606,22 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action } = body;
+    const guard = await requireUser();
+    if (guard.error) return guard.error;
+    const user = guard.user;
 
     // ── 1. 자막 추출 (스마트 모드: CC → Whisper 자동 폴백) ──
     if (action === "extract") {
       const { videoId, fileVideoUrl } = body;
       const sourceHint: LangCode | null = isLangCode(body.sourceLang) ? body.sourceLang : null;
       const mergeFragments: boolean = body.mergeFragments !== false; // 기본 ON
-      const openaiKey = process.env.OPENAI_API_KEY;
+      const openaiKey = resolveOpenAIKey(user); // VIP/관리자: 서버 공용 키, 일반: 본인 키
       const langLabel = (l: LangCode | null, raw?: string | null) =>
         l ? `${LANGS[l].flag} ${LANGS[l].label}` : (raw || "알 수 없음");
 
       // ── A. 파일 모드: ffmpeg 오디오 추출 → Whisper API 음성 분석 ──
       if (fileVideoUrl) {
-        if (!openaiKey) return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다." }, { status: 500 });
+        if (!openaiKey) return keyRequiredResponse("openai", user);
 
         const filename = decodeURIComponent(fileVideoUrl.split("/").pop() || "");
         let filepath = path.join(SAVED_DIR, filename);
@@ -718,11 +683,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Step 2: Whisper 폴백 — yt-dlp로 오디오 다운로드 후 음성 분석
-        if (!openaiKey) {
-          return NextResponse.json({
-            error: "YouTube CC 자막이 없습니다. Whisper 음성 분석을 위해 OpenAI API 키가 필요합니다.",
-          }, { status: 500 });
-        }
+        if (!openaiKey) return keyRequiredResponse("openai", user);
 
         let audioPath: string | null = null;
         try {
@@ -777,7 +738,9 @@ export async function POST(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const cfg = loadEngineConfig();
+      const eng = engineForUser(user);
+      if (!eng.ok) return NextResponse.json({ error: eng.error, code: "KEY_REQUIRED", kind: "openai" }, { status: 403 });
+      const cfg = eng.cfg;
       if (!cfg.openaiKey && !cfg.openclaw) {
         return NextResponse.json({
           error: "번역 엔진이 설정되지 않았습니다. OPENAI_API_KEY 또는 OPENCLAW_GATEWAY_URL/OPENCLAW_TOKEN 을 설정하세요.",
@@ -819,6 +782,9 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
+  const guard = await requireUser();
+  if (guard.error) return guard.error;
+  const user = guard.user;
   const jobId = url.searchParams.get("job");
   if (jobId) {
     const job = jobs.get(jobId);
@@ -828,13 +794,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ status: "running", done: job.done, total: job.total });
   }
   if (url.searchParams.get("config")) {
-    const cfg = loadEngineConfig();
+    const eng = engineForUser(user);
+    if (!eng.ok) {
+      return NextResponse.json({ provider: null, engine: null, agent: null, fallback: null, note: eng.error, tier: "free", needsKey: true });
+    }
+    const cfg = eng.cfg;
     return NextResponse.json({
       provider: cfg.provider,
       engine: engineLabel(cfg, cfg.provider),
       agent: cfg.openclaw?.agent ?? null,
       fallback: cfg.provider === "openclaw" ? (cfg.fallbackToOpenAI ? "openai" : "none") : null,
       note: cfg.note ?? null,
+      tier: cfg.tier,
+      needsKey: false,
     });
   }
   return NextResponse.json({ error: "job 또는 config 파라미터가 필요합니다." }, { status: 400 });

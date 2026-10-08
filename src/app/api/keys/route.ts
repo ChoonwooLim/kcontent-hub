@@ -1,58 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireUser, isPrivileged } from "@/lib/access";
+import { encryptSecret, maskSecret } from "@/lib/crypto";
 
-// 환경변수 키 매핑 (배포 시 영구 유지)
-const ENV_KEY_MAP: Record<string, string> = {
-  youtube: process.env.YOUTUBE_API_KEY ?? "",
-  openai:  process.env.OPENAI_API_KEY  ?? "",
-  deepl:   process.env.DEEPL_API_KEY   ?? "",
-  tiktok:  process.env.TIKTOK_API_KEY  ?? "",
-};
+export const runtime = "nodejs";
 
-// GET /api/keys — 환경변수 우선, DB fallback
+/**
+ * 회원 개인 API 키 (암호화 저장)
+ *  - 일반 회원: OpenAI 키 필수(AI 기능), YouTube 키 필수(소재 수집)
+ *  - VIP/관리자: 선택 — 서버 공용 키가 없을 때만 사용
+ */
+
+/** GET /api/keys — 내 키 등록 상태 (값은 마스킹) */
 export async function GET() {
-  // 1. 환경변수에서 기본값 로드
-  const result: Record<string, string> = { ...ENV_KEY_MAP };
-
-  // 2. DB에 저장된 값으로 덮어쓰기 (사용자가 UI에서 입력한 값)
-  try {
-    const keys = await prisma.apiKey.findMany();
-    for (const k of keys) {
-      // DB 값이 있으면 우선 사용 (환경변수 덮어씀)
-      if (k.value) result[k.service] = k.value;
-    }
-  } catch {
-    // DB 연결 실패 시 환경변수만 사용 (에러 무시)
-  }
-
-  return NextResponse.json({ keys: result });
+  const g = await requireUser();
+  if (g.error) return g.error;
+  const u = g.user;
+  return NextResponse.json({
+    keys: { openai: maskSecret(u.openaiKey), youtube: maskSecret(u.youtubeKey) },
+    has: { openai: !!u.openaiKey, youtube: !!u.youtubeKey },
+    plan: u.plan,
+    role: u.role,
+    privileged: isPrivileged(u),
+    serverKeys: { openai: !!process.env.OPENAI_API_KEY, youtube: !!process.env.YOUTUBE_API_KEY },
+  });
 }
 
-// POST /api/keys — DB에 저장 (upsert)
+/** POST /api/keys — { openai?: string|null, youtube?: string|null }  문자열=저장, null=삭제, 빈값/누락=변경 없음 */
 export async function POST(req: NextRequest) {
+  const g = await requireUser();
+  if (g.error) return g.error;
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const columns = { openai: "openaiKeyEnc", youtube: "youtubeKeyEnc" } as const;
+  const data: { openaiKeyEnc?: string | null; youtubeKeyEnc?: string | null } = {};
+  const saved: string[] = [];
+  const cleared: string[] = [];
+
+  for (const svc of Object.keys(columns) as (keyof typeof columns)[]) {
+    const v = body[svc];
+    if (v === null) { data[columns[svc]] = null; cleared.push(svc); }
+    else if (typeof v === "string" && v.trim()) {
+      if (v.trim().length > 512) return NextResponse.json({ error: `${svc} 키가 너무 깁니다.` }, { status: 400 });
+      data[columns[svc]] = encryptSecret(v.trim());
+      saved.push(svc);
+    }
+  }
+  if (saved.length === 0 && cleared.length === 0) return NextResponse.json({ saved, cleared });
+
   try {
-    const body: Record<string, string> = await req.json();
-    const entries = Object.entries(body).filter(([, v]) => v && v.trim());
-    if (entries.length === 0) return NextResponse.json({ saved: 0 });
-
-    // workspace ID 조회
-    let workspaceId = "";
-    try {
-      const ws = await prisma.workspace.findFirst();
-      workspaceId = ws?.id || "";
-    } catch { /* ignore */ }
-
-    const results = await Promise.all(
-      entries.map(([service, value]) =>
-        prisma.apiKey.upsert({
-          where: { service },
-          update: { value, verified: false },
-          create: { service, value, verified: false, workspaceId },
-        })
-      )
-    );
-    return NextResponse.json({ saved: results.length });
+    await prisma.user.update({ where: { id: g.user.id }, data });
+    return NextResponse.json({ saved, cleared });
   } catch (e) {
-    return NextResponse.json({ error: "DB 연결 없음 — 환경변수로 API 키를 설정하세요", detail: String(e) }, { status: 503 });
+    return NextResponse.json({ error: `저장 실패: ${String(e).slice(0, 200)}` }, { status: 500 });
   }
 }

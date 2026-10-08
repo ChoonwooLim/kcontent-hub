@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { requireUser, resolveYoutubeKey, keyRequiredResponse } from "@/lib/access";
 
 // YouTube API 응답 → VideoItem 형태로 변환 + AI 점수 산정
 function scoreVideo(video: {
@@ -149,18 +149,11 @@ export async function POST(req: NextRequest) {
   try {
     const { maxSubs = 50000, maxViews = 20000, dayRange = 7, niche = "전체", lang = "all" } = await req.json();
 
-    // YouTube API 키 가져오기
-    let apiKey = process.env.YOUTUBE_API_KEY;
-    if (!apiKey) {
-      try {
-        const record = await prisma.apiKey.findUnique({ where: { service: "youtube" } });
-        apiKey = record?.value ?? undefined;
-      } catch { /* prisma not connected */ }
-    }
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "YouTube API 키가 설정되지 않았습니다. 설정 > API 설정에서 YouTube Data API v3 키를 입력해주세요." }, { status: 400 });
-    }
+    // YouTube API 키 — VIP/관리자: 서버 공용 키, 일반 회원: 본인 키
+    const guard = await requireUser();
+    if (guard.error) return guard.error;
+    const apiKey = await resolveYoutubeKey(guard.user);
+    if (!apiKey) return keyRequiredResponse("youtube", guard.user);
 
     // 검색 키워드 선택
     let keywords: string[];

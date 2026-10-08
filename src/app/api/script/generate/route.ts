@@ -1,23 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser, resolveOpenAIKey, resolveYoutubeKey, keyRequiredResponse } from "@/lib/access";
 
-import { prisma } from "@/lib/prisma";
 
 function extractVideoId(url: string): string | null {
   try {
     const u = new URL(url);
     if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
     return u.searchParams.get("v");
-  } catch {
-    return null;
-  }
-}
-
-async function getApiKey(service: string, envVar: string): Promise<string | null> {
-  const fromEnv = process.env[envVar];
-  if (fromEnv) return fromEnv;
-  try {
-    const record = await prisma.apiKey.findUnique({ where: { service } });
-    return record?.value ?? null;
   } catch {
     return null;
   }
@@ -33,13 +22,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "유효하지 않은 YouTube URL이거나 대본 데이터가 없습니다. (URL: " + url + ")" }, { status: 400 });
   }
 
-  // API 키 로드
-  const youtubeKey = await getApiKey("youtube", "YOUTUBE_API_KEY");
-  const openaiKey  = await getApiKey("openai",  "OPENAI_API_KEY");
-
-  if (!openaiKey) {
-    return NextResponse.json({ error: "OpenAI API 키가 설정되지 않았습니다. 설정 → API 설정에서 입력해주세요." }, { status: 400 });
-  }
+  // API 키 로드 — VIP/관리자: 서버 공용 키, 일반 회원: 본인 키
+  const guard = await requireUser();
+  if (guard.error) return guard.error;
+  const youtubeKey = await resolveYoutubeKey(guard.user);
+  const openaiKey  = resolveOpenAIKey(guard.user);
+  if (!openaiKey) return keyRequiredResponse("openai", guard.user);
 
   // ── 1단계: YouTube 영상 메타데이터 ──────────────────────────────
   let videoTitle = studioTitle || "";
