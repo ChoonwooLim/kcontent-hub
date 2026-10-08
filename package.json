@@ -7,7 +7,9 @@
     "build": "prisma generate && (prisma db push --skip-generate || true) && next build",
     "start": "next start",
     "postinstall": "prisma generate",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:push": "dotenv -e .env.local -- prisma db push",
+    "db:validate": "dotenv -e .env.local -- prisma validate"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

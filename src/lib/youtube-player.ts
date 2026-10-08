@@ -13,6 +13,9 @@ export interface YTPlayer {
   mute(): void;
   unMute(): void;
   destroy(): void;
+  // 자막(CC) 모듈 제어 — 공식 문서에는 없지만 IFrame 플레이어에서 널리 쓰이는 메서드
+  loadModule(module: string): void;
+  unloadModule(module: string): void;
 }
 
 declare global {

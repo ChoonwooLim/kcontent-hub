@@ -1,20 +1,27 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
-  Palette, Sparkles, Check, Link2, Loader, AlertCircle,
-  Save, FolderOpen, Trash2, Clock, Camera
+  Sparkles, Check, Link2, Loader, AlertCircle,
+  Save, FolderOpen, Trash2, Clock, Camera, Languages, ArrowRight
 } from "lucide-react";
+import {
+  LANGS, LANG_CODES, type LangCode, isLangCode,
+  detectLangFromTexts, fontStackFor, toSRT, toVTT, normalizeCues,
+} from "@/lib/subtitle-lang";
 
 /* ── 타입 ────────────────────────────────────────────────── */
 type SubLine = {
   id: number;
   start: number;   // 초 단위
   end: number;
-  text: string;
+  text: string;    // 현재 활성 언어 트랙의 텍스트 (오버레이·내보내기·대본엔진이 그대로 사용)
   type: string;
+  texts?: Partial<Record<LangCode, string>>;  // 언어별 텍스트 트랙 (ko / en / ja / zh / zh-Hant)
 };
+
+type TranslateStyle = "broadcast" | "faithful";
 
 type StudioData = {
   videoId: string;
@@ -50,7 +57,10 @@ const FONT_PRESETS = [
   { name: "모노 코드", color: "#7c85f0", bg: "rgba(10,10,20,0.9)", font: "JetBrains Mono" },
 ];
 
-
+const STYLE_LABELS: Record<TranslateStyle, { label: string; hint: string }> = {
+  broadcast: { label: "방송 윤문", hint: "예능·다큐 작가 톤으로 맛깔나게 각색" },
+  faithful: { label: "원문 충실", hint: "의미·정보량을 그대로 보존" },
+};
 
 /* ── 유틸 ────────────────────────────────────────────────── */
 function timeToSec(t: string): number {
@@ -78,30 +88,33 @@ function scriptToSubs(script: StudioData["script"]): SubLine[] {
   });
 }
 
-function generateSRT(subs: SubLine[]): string {
-  return subs.map((s, i) => {
-    const fmt = (t: number) => {
-      const h = Math.floor(t / 3600);
-      const m = Math.floor((t % 3600) / 60);
-      const sec = Math.floor(t % 60);
-      const ms = Math.round((t % 1) * 1000);
-      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
-    };
-    return `${i + 1}\n${fmt(s.start)} --> ${fmt(s.end)}\n${s.text}\n`;
-  }).join("\n");
+/** 언어 트랙 맵에 한 언어의 텍스트를 기록한 새 맵 반환 */
+function withTrack(texts: SubLine["texts"], lang: LangCode, text: string): Partial<Record<LangCode, string>> {
+  const next: Partial<Record<LangCode, string>> = { ...(texts ?? {}) };
+  next[lang] = text;
+  return next;
 }
 
-function generateVTT(subs: SubLine[]): string {
-  const fmt = (t: number) => {
-    const h = Math.floor(t / 3600);
-    const m = Math.floor((t % 3600) / 60);
-    const sec = Math.floor(t % 60);
-    const ms = Math.round((t % 1) * 1000);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+/** texts 트랙이 없는 자막(구버전 저장본·새 추출 결과)에 현재 텍스트를 지정 언어 트랙으로 채운다 */
+function hydrateTracks(subs: SubLine[], lang: LangCode | null): { subs: SubLine[]; lang: LangCode | null } {
+  const resolved = lang ?? detectLangFromTexts(subs.map(s => s.text));
+  if (!resolved) return { subs, lang: null };
+  return {
+    lang: resolved,
+    subs: subs.map(s =>
+      s.texts && Object.keys(s.texts).length > 0 ? s : { ...s, texts: withTrack(undefined, resolved, s.text) }
+    ),
   };
-  return "WEBVTT\n\n" + subs.map((s, i) =>
-    `${i + 1}\n${fmt(s.start)} --> ${fmt(s.end)}\n${s.text}\n`
-  ).join("\n");
+}
+
+/** 하나 이상의 줄에 텍스트가 있는 언어 트랙 목록 */
+function availableTracks(subs: SubLine[]): LangCode[] {
+  return LANG_CODES.filter(l => subs.some(s => (s.texts?.[l] ?? "").trim().length > 0));
+}
+
+/** 활성 트랙 전환: 각 줄의 text 를 해당 언어 트랙으로 교체 */
+function applyTrack(subs: SubLine[], lang: LangCode): SubLine[] {
+  return subs.map(s => ({ ...s, text: s.texts?.[lang] ?? "" }));
 }
 
 function downloadFile(content: string, filename: string, mime: string) {
@@ -116,6 +129,25 @@ function downloadFile(content: string, filename: string, mime: string) {
 
 /* ── YouTube IFrame Player 타입 ──────────────────────────── */
 import type { YTPlayer } from "@/lib/youtube-player";
+
+/** 현재 시각에 걸린 자막 중 가장 늦게 시작한 큐를 고른다.
+ *  YouTube 자동 자막은 큐가 서로 겹치는 경우가 많아 첫 번째 일치만 고르면 뒤 큐가 영영 표시되지 않는다. */
+function findActiveSub(subs: SubLine[], t: number): SubLine | undefined {
+  for (let i = subs.length - 1; i >= 0; i--) {
+    const s = subs[i];
+    if (t >= s.start && t <= s.end) return s;
+  }
+  return undefined;
+}
+
+/** YouTube 플레이어 자체 CC 켜기/끄기 — 우리 오버레이와 겹치지 않도록 기본은 끈다 */
+function applyYtCaptions(pl: YTPlayer | null, show: boolean) {
+  if (!pl) return;
+  try {
+    if (show) { pl.loadModule("captions"); pl.loadModule("cc"); }
+    else { pl.unloadModule("captions"); pl.unloadModule("cc"); }
+  } catch { /* 플레이어가 아직 준비되지 않음 */ }
+}
 
 
 /* ── 메인 컴포넌트 ───────────────────────────────────────── */
@@ -140,6 +172,20 @@ export default function StudioPage() {
   const [subtitleStep, setSubtitleStep] = useState<"extracted" | "translated" | null>(null);
   const [subtitleMethod, setSubtitleMethod] = useState<string | null>(null); // "youtube_cc" | "whisper" | "whisper_fallback"
   const [subtitleMessage, setSubtitleMessage] = useState<string | null>(null);
+  const [translateMessage, setTranslateMessage] = useState<string | null>(null);
+
+  // 다국어 (ko / en / ja / zh)
+  const [sourceHint, setSourceHint] = useState<"auto" | LangCode>("auto");   // 추출 시 원본 언어 힌트
+  const [sourceLang, setSourceLang] = useState<LangCode | null>(null);        // 감지·확정된 원본 언어
+  const [activeLang, setActiveLang] = useState<LangCode | null>(null);        // 현재 편집·미리보기·내보내기 트랙
+  const [targetLang, setTargetLang] = useState<LangCode>("ko");               // 번역 대상 언어
+  const [translateStyle, setTranslateStyle] = useState<TranslateStyle>("broadcast");
+  const [secondaryLang, setSecondaryLang] = useState<LangCode | "">("");      // 이중 자막 보조 트랙
+  const [mergeFragments, setMergeFragments] = useState(true);                // 추출 시 짧은 조각 자막을 앞 문장에 병합
+  const [overlayPos, setOverlayPos] = useState<"bottom" | "top">("bottom");  // 오버레이 위치 (영상에 구워진 자막과 겹침 회피)
+  const [showYtCaptions, setShowYtCaptions] = useState(false);               // YouTube 플레이어 자체 CC 표시 여부 (기본 숨김)
+  const ytCaptionsRef = useRef(false);
+
   // 추가된 단일 썸네일 대신 배열 사용
   const [capturedThumbnails, setCapturedThumbnails] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number>(0);
@@ -149,6 +195,7 @@ export default function StudioPage() {
   type SessionItem = {
     id: string; name: string; videoId?: string; fileVideoUrl?: string;
     videoTitle: string; subCount: number; step?: string; method?: string;
+    sourceLang?: string | null; activeLang?: string | null;
     preset: number; thumbnail?: string; updatedAt: string;
   };
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -163,6 +210,28 @@ export default function StudioPage() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  /* ── 파생 상태: 언어 트랙 ───────────────────────────────── */
+  const tracks = useMemo(() => availableTracks(subs), [subs]);
+  // 편집 리스트에 참고용으로 보여줄 트랙: 보조 자막 > 원본(활성 트랙과 다를 때)
+  const refLang: LangCode | null =
+    secondaryLang && secondaryLang !== activeLang ? secondaryLang
+    : sourceLang && sourceLang !== activeLang ? sourceLang
+    : null;
+
+  // 활성 트랙과 번역 대상이 같아지면 대상 언어를 자동으로 다른 언어로 변경
+  useEffect(() => {
+    if (activeLang && targetLang === activeLang) {
+      setTargetLang(activeLang === "ko" ? "en" : "ko");
+    }
+  }, [activeLang, targetLang]);
+
+  // 보조 자막 트랙이 사라지거나 활성 트랙과 같아지면 해제
+  useEffect(() => {
+    if (secondaryLang && (secondaryLang === activeLang || !tracks.includes(secondaryLang))) {
+      setSecondaryLang("");
+    }
+  }, [secondaryLang, activeLang, tracks]);
 
   /* ── sessionStorage(수동 이관) 및 localStorage(자동 복구) ── */
   useEffect(() => {
@@ -179,10 +248,14 @@ export default function StudioPage() {
         setSubtitleLoading(null);
         setSubtitleMethod(null);
         setSubtitleMessage(null);
+        setTranslateMessage(null);
         setSelectedSub(null);
         setCurrentTime(0);
         setPlaying(false);
         setExported(false);
+        setSourceLang(null);
+        setActiveLang(null);
+        setSecondaryLang("");
 
         // 다운로드 파일이 있으면 파일 모드로
         if (data.downloadedFileUrl) {
@@ -196,7 +269,11 @@ export default function StudioPage() {
         }
 
         if (data.script?.length) {
-          setSubs(scriptToSubs(data.script));
+          // 대본 엔진에서 넘어온 자막은 한국어
+          const h = hydrateTracks(scriptToSubs(data.script), "ko");
+          setSubs(h.subs);
+          setSourceLang(h.lang);
+          setActiveLang(h.lang);
         }
 
         sessionStorage.removeItem("studio_data");
@@ -212,15 +289,29 @@ export default function StudioPage() {
            if (parsed.videoId) setVideoId(parsed.videoId);
            if (parsed.fileVideoUrl) setFileVideoUrl(parsed.fileVideoUrl);
            if (parsed.videoTitle) setVideoTitle(parsed.videoTitle);
-           if (parsed.subs) setSubs(parsed.subs);
+           const savedActive: LangCode | null = isLangCode(parsed.activeLang) ? parsed.activeLang : null;
+           const savedSource: LangCode | null = isLangCode(parsed.sourceLang) ? parsed.sourceLang : null;
+           if (parsed.subs) {
+             const h = hydrateTracks(normalizeCues(parsed.subs as SubLine[]), savedActive ?? savedSource);
+             setSubs(h.subs);
+             setSourceLang(savedSource ?? h.lang);
+             setActiveLang(savedActive ?? h.lang);
+           }
            if (typeof parsed.preset === "number") setPreset(parsed.preset);
            if (parsed.subtitleStep) setSubtitleStep(parsed.subtitleStep);
            if (parsed.subtitleMethod) setSubtitleMethod(parsed.subtitleMethod);
            if (parsed.capturedThumbnails) setCapturedThumbnails(parsed.capturedThumbnails);
+           if (parsed.sourceHint === "auto" || isLangCode(parsed.sourceHint)) setSourceHint(parsed.sourceHint);
+           if (isLangCode(parsed.targetLang)) setTargetLang(parsed.targetLang);
+           if (parsed.translateStyle === "faithful" || parsed.translateStyle === "broadcast") setTranslateStyle(parsed.translateStyle);
+           if (isLangCode(parsed.secondaryLang)) setSecondaryLang(parsed.secondaryLang);
+           if (typeof parsed.mergeFragments === "boolean") setMergeFragments(parsed.mergeFragments);
+           if (parsed.overlayPos === "top" || parsed.overlayPos === "bottom") setOverlayPos(parsed.overlayPos);
+           if (typeof parsed.showYtCaptions === "boolean") setShowYtCaptions(parsed.showYtCaptions);
         }
       } catch {}
     }
-    
+
     setIsLoaded(true);
   }, []);
 
@@ -230,13 +321,17 @@ export default function StudioPage() {
     const timer = setTimeout(() => {
       try {
         localStorage.setItem("ai_subtitle_studio_save", JSON.stringify({
-          videoId, fileVideoUrl, videoTitle, subs, preset, 
-          subtitleStep, subtitleMethod, capturedThumbnails
+          videoId, fileVideoUrl, videoTitle, subs, preset,
+          subtitleStep, subtitleMethod, capturedThumbnails,
+          sourceHint, sourceLang, activeLang, targetLang, translateStyle, secondaryLang,
+          mergeFragments, overlayPos, showYtCaptions,
         }));
       } catch {}
     }, 500);
     return () => clearTimeout(timer);
-  }, [videoId, fileVideoUrl, videoTitle, subs, preset, subtitleStep, subtitleMethod, capturedThumbnails, isLoaded]);
+  }, [videoId, fileVideoUrl, videoTitle, subs, preset, subtitleStep, subtitleMethod, capturedThumbnails,
+      sourceHint, sourceLang, activeLang, targetLang, translateStyle, secondaryLang,
+      mergeFragments, overlayPos, showYtCaptions, isLoaded]);
 
   /* ── HTML5 Video 플레이어 이벤트 ────────────────────────── */
   useEffect(() => {
@@ -302,17 +397,28 @@ export default function StudioPage() {
         onReady: (e: { target: YTPlayer }) => {
           setDuration(e.target.getDuration());
           setLoading(false);
+          applyYtCaptions(e.target, ytCaptionsRef.current);
         },
         onStateChange: (e: { data: number }) => {
           if (e.data === window.YT.PlayerState.PLAYING) {
             setPlaying(true);
+            // 재생 시작 시 YouTube 가 CC 를 다시 켜는 경우가 있어 설정을 재적용
+            applyYtCaptions(playerRef.current, ytCaptionsRef.current);
           } else if (e.data === window.YT.PlayerState.PAUSED || e.data === window.YT.PlayerState.ENDED) {
             setPlaying(false);
           }
         },
+        // 자막 모듈이 로드될 때 호출됨 — 숨김 설정이면 즉시 내린다
+        onApiChange: () => { if (!ytCaptionsRef.current) applyYtCaptions(playerRef.current, false); },
       },
     } as Record<string, unknown>);
   }, [ytReady, videoId, isFileMode]);
+
+  /* ── YouTube 자체 CC 토글 반영 ─────────────────────────── */
+  useEffect(() => {
+    ytCaptionsRef.current = showYtCaptions;
+    if (!isFileMode) applyYtCaptions(playerRef.current, showYtCaptions);
+  }, [showYtCaptions, isFileMode]);
 
   /* ── 현재 시간 싱크 (100ms 간격) — YouTube 모드만 ──────── */
   useEffect(() => {
@@ -370,7 +476,7 @@ export default function StudioPage() {
   const loadFromUrl = () => {
     const input = urlInput.trim();
     if (!input) return;
-    
+
     // 서버 파일 URL인 경우 (/api/downloads/ 경로)
     if (input.startsWith("/api/downloads/") || input.includes("/api/downloads/")) {
       setFileVideoUrl(input);
@@ -378,7 +484,7 @@ export default function StudioPage() {
       setVideoTitle(decodeURIComponent(input.split("/").pop() || "영상 파일"));
       return;
     }
-    
+
     try {
       const u = new URL(input);
       // YouTube URL
@@ -401,17 +507,128 @@ export default function StudioPage() {
     } catch { /* not a valid URL */ }
   };
 
-  /* ── 자막 수정 ────────────────────────────────────────── */
+  /* ── 자막 수정 (활성 언어 트랙에 반영) ───────────────────── */
   const updateSubText = (id: number, text: string) => {
-    setSubs(prev => prev.map(s => s.id === id ? { ...s, text } : s));
+    setSubs(prev => prev.map(s =>
+      s.id === id
+        ? { ...s, text, texts: activeLang ? withTrack(s.texts, activeLang, text) : s.texts }
+        : s
+    ));
   };
 
-  /* ── SRT/VTT 내보내기 ────────────────────────────────── */
+  /* ── 언어 트랙 전환 ────────────────────────────────────── */
+  const switchTrack = (lang: LangCode) => {
+    if (lang === activeLang) return;
+    setSubs(prev => applyTrack(prev, lang));
+    setActiveLang(lang);
+    setSelectedSub(null);
+  };
+
+  /* ── ① 자막 추출 ─────────────────────────────────────── */
+  const handleExtract = async () => {
+    setSubtitleLoading("extract");
+    setSubtitleError(null);
+    setSubtitleMethod(null);
+    setSubtitleMessage(null);
+    setTranslateMessage(null);
+    try {
+      const res = await fetch("/api/studio/subtitle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "extract",
+          videoId: videoId || "",
+          fileVideoUrl: fileVideoUrl || "",
+          sourceLang: sourceHint === "auto" ? null : sourceHint,
+          mergeFragments,
+        }),
+      });
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        setSubtitleError(`서버 오류 (${res.status}): JSON이 아닌 응답이 반환되었습니다. 서버 상태를 확인하세요.`);
+        return;
+      }
+      let data;
+      try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
+      if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
+
+      const extracted: SubLine[] = (data.subs as SubLine[]).map(s => ({ ...s, texts: undefined }));
+      // 언어 확정 우선순위: 서버 감지 → 사용자 힌트 → 텍스트 휴리스틱 → 영어
+      const lang: LangCode =
+        (isLangCode(data.language) ? data.language : null)
+        ?? (sourceHint !== "auto" ? sourceHint : null)
+        ?? detectLangFromTexts(extracted.map(s => s.text))
+        ?? "en";
+      const h = hydrateTracks(normalizeCues(extracted), lang);
+      setSubs(h.subs);
+      setSourceLang(lang);
+      setActiveLang(lang);
+      setSecondaryLang("");
+      setSubtitleStep("extracted");
+      setSubtitleMethod(data.method || null);
+      setSubtitleMessage(data.message || null);
+    } catch (e) { setSubtitleError(String(e)); }
+    finally { setSubtitleLoading(null); }
+  };
+
+  /* ── ② 번역 (활성 트랙 → 대상 언어) ────────────────────── */
+  const handleTranslate = async () => {
+    const src: LangCode | null = activeLang ?? sourceLang;
+    if (!subs.length || targetLang === src) return;
+    setSubtitleLoading("translate");
+    setSubtitleError(null);
+    setTranslateMessage(null);
+    try {
+      const res = await fetch("/api/studio/subtitle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "translate",
+          subs: subs.map(({ id, start, end, text, type }) => ({ id, start, end, text, type })),
+          sourceLang: src,
+          targetLang,
+          style: translateStyle,
+        }),
+      });
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        setSubtitleError(`서버 오류 (${res.status}): 번역 API 응답 오류. 서버 상태를 확인하세요.`);
+        return;
+      }
+      let data;
+      try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
+      if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
+
+      const byId = new Map<number, string>((data.subs as SubLine[]).map(s => [s.id, s.text]));
+      setSubs(prev => prev.map(s => {
+        const tr = byId.get(s.id) ?? s.text;
+        // 번역 전 텍스트가 어느 트랙에도 없었다면 원본 트랙으로 보존
+        const base = s.texts && Object.keys(s.texts).length > 0 ? s.texts : (src ? withTrack(undefined, src, s.text) : undefined);
+        return { ...s, text: tr, texts: withTrack(base, targetLang, tr) };
+      }));
+      if (!sourceLang && src) setSourceLang(src);
+      setActiveLang(targetLang);
+      setSubtitleStep("translated");
+      setTranslateMessage(data.message || `${LANGS[targetLang].label} 번역 완료`);
+    } catch (e) { setSubtitleError(String(e)); }
+    finally { setSubtitleLoading(null); }
+  };
+
+  /* ── SRT/VTT 내보내기 (활성 트랙 · 이중 자막) ──────────── */
+  const exportBase = videoTitle || "subtitles";
+  const singleCues = () => normalizeCues(subs).map(s => ({ start: s.start, end: s.end, lines: [s.text] }));
+  const dualCues = (second: LangCode) =>
+    normalizeCues(subs).map(s => ({ start: s.start, end: s.end, lines: [s.text, s.texts?.[second] ?? ""] }));
+
   const handleExportSRT = () => {
-    downloadFile(generateSRT(subs), `${videoTitle || "subtitles"}.srt`, "text/srt");
+    downloadFile(toSRT(singleCues()), `${exportBase}${activeLang ? "." + activeLang : ""}.srt`, "text/srt");
   };
   const handleExportVTT = () => {
-    downloadFile(generateVTT(subs), `${videoTitle || "subtitles"}.vtt`, "text/vtt");
+    downloadFile(toVTT(singleCues()), `${exportBase}${activeLang ? "." + activeLang : ""}.vtt`, "text/vtt");
+  };
+  const handleExportDualSRT = () => {
+    if (!secondaryLang) return;
+    downloadFile(toSRT(dualCues(secondaryLang)), `${exportBase}.${activeLang ?? "x"}+${secondaryLang}.srt`, "text/srt");
   };
 
   const router = useRouter();
@@ -422,6 +639,8 @@ export default function StudioPage() {
       fileVideoUrl: fileVideoUrl || "",
       videoTitle,
       subs,
+      sourceLang,
+      activeLang,
       capturedThumbnails,
       selectedThumbnailIndex
     }));
@@ -458,6 +677,8 @@ export default function StudioPage() {
           subs,
           step: subtitleStep,
           method: subtitleMethod,
+          sourceLang,
+          activeLang,
           preset,
           thumbnail: currentThumbnail || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null),
           thumbnailsJson: capturedThumbnails.length > 0 ? JSON.stringify(capturedThumbnails) : null,
@@ -491,8 +712,16 @@ export default function StudioPage() {
         setVideoId("");
       }
       setVideoTitle(s.videoTitle || "");
-      setSubs(s.subs || []);
-      
+
+      const savedSource: LangCode | null = isLangCode(s.sourceLang) ? s.sourceLang : null;
+      const savedActive: LangCode | null = isLangCode(s.activeLang) ? s.activeLang : null;
+      const h = hydrateTracks(normalizeCues((s.subs || []) as SubLine[]), savedActive ?? savedSource);
+      const active = savedActive ?? h.lang;
+      setSubs(active ? applyTrack(h.subs, active) : h.subs);
+      setSourceLang(savedSource ?? h.lang);
+      setActiveLang(active);
+      setSecondaryLang("");
+
       let loadedThumbs: string[] = [];
       if (s.thumbnailsJson) {
          try { loadedThumbs = JSON.parse(s.thumbnailsJson); } catch {}
@@ -506,6 +735,7 @@ export default function StudioPage() {
       setPreset(s.preset ?? 0);
       setSubtitleError(null);
       setSubtitleMessage(null);
+      setTranslateMessage(null);
       setSelectedSub(null);
       setCurrentTime(0);
       setShowSessions(false);
@@ -524,9 +754,26 @@ export default function StudioPage() {
   };
 
   /* ── 현재 활성 자막 ──────────────────────────────────── */
-  const activeSub = subs.find(s => currentTime >= s.start && currentTime <= s.end);
+  const activeSub = findActiveSub(subs, currentTime);
   const p = FONT_PRESETS[preset];
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const translateSrc: LangCode | null = activeLang ?? sourceLang;
+
+  /* ── 공통 스타일 ──────────────────────────────────────── */
+  const sectionTitle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 700, color: "var(--text-secondary)",
+    textTransform: "uppercase", letterSpacing: "0.06em",
+  };
+  const smallSelect: React.CSSProperties = {
+    flex: 1, fontSize: 12, padding: "6px 10px", borderRadius: 6, minWidth: 0,
+  };
+  const langPill = (active: boolean): React.CSSProperties => ({
+    padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${active ? "var(--brand)" : "var(--border-default)"}`,
+    background: active ? "var(--brand-dim)" : "var(--bg-elevated)",
+    color: active ? "#a5b4fc" : "var(--text-secondary)",
+    display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s",
+  });
 
   /* ── 렌더 ─────────────────────────────────────────────── */
   return (
@@ -535,7 +782,7 @@ export default function StudioPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>자막 스튜디오</h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            YouTube 원본 영상 재생 · 자막 실시간 싱크 · 스타일 편집 · SRT/VTT 내보내기
+            한·영·일·중(간체·번체) 상호 번역 · 자막 실시간 싱크 · 이중 자막 미리보기 · SRT/VTT 내보내기
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -584,7 +831,10 @@ export default function StudioPage() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 300, overflowY: "auto" }}>
-              {sessions.map(s => (
+              {sessions.map(s => {
+                const sSrc = isLangCode(s.sourceLang) ? s.sourceLang : null;
+                const sAct = isLangCode(s.activeLang) ? s.activeLang : null;
+                return (
                 <div
                   key={s.id}
                   onClick={() => handleLoadSession(s.id)}
@@ -611,8 +861,14 @@ export default function StudioPage() {
                     <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {s.videoTitle || s.name}
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
                       <span>📝 {s.subCount}개 자막</span>
+                      {sSrc && (
+                        <span style={{ color: "#a5b4fc" }}>
+                          {LANGS[sSrc].flag} {LANGS[sSrc].short}
+                          {sAct && sAct !== sSrc && <> → {LANGS[sAct].flag} {LANGS[sAct].short}</>}
+                        </span>
+                      )}
                       <span>{s.step === "translated" ? "✓ 번역완료" : s.step === "extracted" ? "✓ 추출완료" : ""}</span>
                       <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
                         <Clock size={9} />
@@ -630,7 +886,8 @@ export default function StudioPage() {
                     <Trash2 size={13} color="#f87171" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -659,6 +916,7 @@ export default function StudioPage() {
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
             💡 YouTube URL, 영상 파일 경로 입력 또는 편집기에서 &quot;자막 스튜디오로 전송&quot; 클릭 시 자동 로드됩니다.
+            한국어·영어·일본어·중국어(간체/번체) 영상 모두 지원합니다.
           </div>
         </div>
       )}
@@ -709,41 +967,76 @@ export default function StudioPage() {
                   </div>
                 )}
 
-                {/* 자막 오버레이 */}
-                {activeSub && (
+                {/* 자막 오버레이 (활성 트랙 + 선택 시 보조 트랙 이중 자막) */}
+                {activeSub && activeSub.text && (
+                  <div
+                    lang={activeLang ? LANGS[activeLang].htmlLang : undefined}
+                    style={{
+                      position: "absolute", left: "50%", transform: "translateX(-50%)",
+                      ...(overlayPos === "top" ? { top: "9%" } : { bottom: "12%" }),
+                      background: p.bg, color: p.color, padding: "8px 18px", borderRadius: 6,
+                      fontSize: 16, fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
+                      maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap",
+                      transition: "opacity 0.2s", zIndex: 3,
+                      pointerEvents: "none",
+                    }}>
+                    {activeSub.text}
+                    {secondaryLang && activeSub.texts?.[secondaryLang] && (
+                      <div
+                        lang={LANGS[secondaryLang].htmlLang}
+                        style={{
+                          fontSize: 12, fontWeight: 500, opacity: 0.85, marginTop: 4,
+                          fontFamily: fontStackFor(secondaryLang, p.font),
+                        }}>
+                        {activeSub.texts[secondaryLang]}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 소스 표시 (파일 / YouTube) + 활성 언어 */}
+                <div style={{ position: "absolute", top: 10, left: 12, display: "flex", gap: 6, zIndex: 3, pointerEvents: "none" }}>
+                  {isFileMode && (
+                    <div style={{
+                      background: "rgba(139,92,246,0.8)", color: "white",
+                      padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700,
+                    }}>
+                      📁 로컬 파일
+                    </div>
+                  )}
+                  {activeLang && (
+                    <div style={{
+                      background: "rgba(0,0,0,0.6)", color: "white",
+                      padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700,
+                    }}>
+                      {LANGS[activeLang].flag} {LANGS[activeLang].short}
+                      {secondaryLang && <> + {LANGS[secondaryLang].short}</>}
+                    </div>
+                  )}
+                </div>
+
+                {/* 시간 표시 + YouTube 자체 CC 토글 */}
+                <div style={{ position: "absolute", top: 10, right: 12, display: "flex", gap: 6, alignItems: "center", zIndex: 4 }}>
+                  {!isFileMode && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setShowYtCaptions(v => !v); }}
+                      title={showYtCaptions ? "YouTube 자체 자막(CC) 숨기기" : "YouTube 자체 자막(CC) 표시 — 기본은 숨김 (오버레이와 겹침 방지)"}
+                      style={{
+                        background: showYtCaptions ? "rgba(239,68,68,0.85)" : "rgba(0,0,0,0.6)", color: "white",
+                        padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700,
+                        border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer",
+                      }}>
+                      YT CC {showYtCaptions ? "ON" : "OFF"}
+                    </button>
+                  )}
                   <div style={{
-                    position: "absolute", bottom: "12%", left: "50%", transform: "translateX(-50%)",
-                    background: p.bg, color: p.color, padding: "8px 18px", borderRadius: 6,
-                    fontSize: 16, fontWeight: 600, fontFamily: p.font, textAlign: "center",
-                    maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap",
-                    transition: "opacity 0.2s", zIndex: 3,
+                    background: "rgba(0,0,0,0.6)", color: "white",
+                    padding: "3px 8px", borderRadius: 5,
+                    fontSize: 12, fontFamily: "JetBrains Mono, monospace",
                     pointerEvents: "none",
                   }}>
-                    {activeSub.text}
+                    {formatTime(currentTime)} / {formatTime(duration)}
                   </div>
-                )}
-
-                {/* 소스 표시 (파일 / YouTube) */}
-                {isFileMode && (
-                  <div style={{
-                    position: "absolute", top: 10, left: 12,
-                    background: "rgba(139,92,246,0.8)", color: "white",
-                    padding: "3px 8px", borderRadius: 5,
-                    fontSize: 10, fontWeight: 700, zIndex: 3, pointerEvents: "none",
-                  }}>
-                    📁 로컬 파일
-                  </div>
-                )}
-
-                {/* 시간 표시 */}
-                <div style={{
-                  position: "absolute", top: 10, right: 12,
-                  background: "rgba(0,0,0,0.6)", color: "white",
-                  padding: "3px 8px", borderRadius: 5,
-                  fontSize: 12, fontFamily: "JetBrains Mono, monospace",
-                  zIndex: 3, pointerEvents: "none",
-                }}>
-                  {formatTime(currentTime)} / {formatTime(duration)}
                 </div>
 
                 {/* 클릭으로 재생/일시정지 */}
@@ -814,10 +1107,20 @@ export default function StudioPage() {
           <div className="card" style={{ overflow: "hidden" }}>
             <div style={{
               padding: "12px 16px", borderBottom: "1px solid var(--border-subtle)",
-              display: "flex", justifyContent: "space-between", alignItems: "center",
+              display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
             }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>자막 편집</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{subs.length}개 장면</div>
+              <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                자막 편집
+                {activeLang && (
+                  <span className="badge badge-brand" style={{ fontSize: 10 }}>
+                    {LANGS[activeLang].flag} {LANGS[activeLang].label} 편집 중
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", gap: 8, alignItems: "center" }}>
+                {refLang && <span>참고: {LANGS[refLang].flag} {LANGS[refLang].short}</span>}
+                <span>{subs.length}개 장면</span>
+              </div>
             </div>
             <div style={{ maxHeight: 380, overflowY: "auto" }}>
               {subs.map(s => (
@@ -843,15 +1146,29 @@ export default function StudioPage() {
                       {TYPE_LABELS[s.type] ?? s.type}
                     </span>
                   </div>
-                  <textarea value={s.text} onChange={e => updateSubText(s.id, e.target.value)} rows={2}
-                    style={{
-                      margin: "8px 12px 8px 0", width: "calc(100% - 12px)",
-                      background: "transparent", border: "none", outline: "none",
-                      color: "var(--text-primary)", fontSize: 13, resize: "none",
-                      fontFamily: "Inter, sans-serif", lineHeight: 1.5,
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", padding: "8px 12px 8px 0", minWidth: 0 }}>
+                    <textarea value={s.text} onChange={e => updateSubText(s.id, e.target.value)} rows={2}
+                      lang={activeLang ? LANGS[activeLang].htmlLang : undefined}
+                      placeholder={activeLang ? `${LANGS[activeLang].label} 자막 입력` : ""}
+                      style={{
+                        width: "100%",
+                        background: "transparent", border: "none", outline: "none",
+                        color: "var(--text-primary)", fontSize: 13, resize: "none",
+                        fontFamily: fontStackFor(activeLang, "Inter"), lineHeight: 1.5,
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                    {refLang && s.texts?.[refLang] && (
+                      <div
+                        lang={LANGS[refLang].htmlLang}
+                        style={{
+                          fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, marginTop: 2,
+                          fontFamily: fontStackFor(refLang, "Inter"), whiteSpace: "pre-wrap",
+                        }}>
+                        {s.texts[refLang]}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -861,9 +1178,170 @@ export default function StudioPage() {
         {/* ── 우측: 스타일 + 내보내기 ────────────────────── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
+          {/* 자막 워크플로우 (다국어) */}
+          {(videoId || isFileMode) && (
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ ...sectionTitle, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                <Languages size={13} color="#818cf8" /> 자막 워크플로우
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+                {/* 원본 언어 (추출 힌트) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", width: 56 }}>원본 언어</span>
+                  <select
+                    className="input" style={smallSelect}
+                    value={sourceHint}
+                    disabled={subtitleLoading !== null}
+                    onChange={e => setSourceHint(e.target.value as "auto" | LangCode)}
+                  >
+                    <option value="auto">자동 감지</option>
+                    {LANG_CODES.map(l => (
+                      <option key={l} value={l}>{LANGS[l].flag} {LANGS[l].label} · {LANGS[l].native}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}>
+                  <input
+                    type="checkbox" checked={mergeFragments} disabled={subtitleLoading !== null}
+                    onChange={e => setMergeFragments(e.target.checked)}
+                    style={{ accentColor: "var(--brand)" }}
+                  />
+                  짧게 끊긴 조각 자막을 앞 문장에 이어 붙이기
+                </label>
+
+                {/* ① 자막 추출 (스마트 모드: CC → Whisper 자동 폴백) */}
+                <button
+                  className="btn btn-brand btn-sm"
+                  style={{ gap: 6, justifyContent: "flex-start" }}
+                  disabled={subtitleLoading !== null}
+                  onClick={handleExtract}
+                >
+                  {subtitleLoading === "extract"
+                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{isFileMode ? "Whisper 음성 분석 중..." : "자막 추출 중 (CC → Whisper 자동 전환)..."}</>
+                    : <><Download size={12} />{isFileMode ? "① 음성 분석 자막 추출 (Whisper AI)" : "① 자막 추출 (CC 우선 → Whisper 폴백)"}</>
+                  }
+                </button>
+                {subtitleStep && subtitleMessage && (
+                  <div style={{ fontSize: 10, marginLeft: 4, padding: "4px 8px", borderRadius: 4,
+                    color: subtitleMethod === "youtube_cc" ? "#34d399" : "#818cf8",
+                    background: subtitleMethod === "youtube_cc" ? "rgba(52,211,153,0.06)" : "rgba(129,140,248,0.06)",
+                  }}>
+                    {subtitleMessage}
+                  </div>
+                )}
+
+                {/* 언어 트랙 */}
+                {tracks.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
+                      언어 트랙 — 클릭하면 편집·미리보기·내보내기 대상이 전환됩니다
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {tracks.map(l => (
+                        <button key={l} onClick={() => switchTrack(l)} style={langPill(l === activeLang)} title={LANGS[l].label}>
+                          {LANGS[l].flag} {LANGS[l].short}
+                          {l === sourceLang && <span style={{ opacity: 0.6, fontWeight: 500 }}>원본</span>}
+                          {l === activeLang && <Check size={10} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ② 번역: 활성 트랙 → 대상 언어 */}
+                <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span className="badge badge-gray" style={{ fontSize: 10, whiteSpace: "nowrap" }}>
+                      {translateSrc ? `${LANGS[translateSrc].flag} ${LANGS[translateSrc].short}` : "원본"}
+                    </span>
+                    <ArrowRight size={12} color="var(--text-muted)" />
+                    <select
+                      className="input" style={smallSelect}
+                      value={targetLang}
+                      disabled={subtitleLoading !== null}
+                      onChange={e => setTargetLang(e.target.value as LangCode)}
+                    >
+                      {LANG_CODES.map(l => (
+                        <option key={l} value={l} disabled={l === translateSrc}>
+                          {LANGS[l].flag} {LANGS[l].label} · {LANGS[l].native}{l === translateSrc ? " (현재 트랙)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {(Object.keys(STYLE_LABELS) as TranslateStyle[]).map(st => (
+                      <button
+                        key={st}
+                        onClick={() => setTranslateStyle(st)}
+                        title={STYLE_LABELS[st].hint}
+                        style={{
+                          flex: 1, padding: "5px 8px", borderRadius: 6, fontSize: 11, cursor: "pointer",
+                          border: `1px solid ${translateStyle === st ? "var(--brand)" : "var(--border-default)"}`,
+                          background: translateStyle === st ? "var(--brand-dim)" : "var(--bg-elevated)",
+                          color: translateStyle === st ? "#a5b4fc" : "var(--text-muted)",
+                          fontWeight: translateStyle === st ? 700 : 500,
+                        }}
+                      >
+                        {STYLE_LABELS[st].label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="btn btn-brand btn-sm"
+                    style={{
+                      gap: 6, justifyContent: "flex-start",
+                      background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                      borderColor: "#8b5cf6",
+                    }}
+                    disabled={subtitleLoading !== null || subs.length === 0 || targetLang === translateSrc}
+                    onClick={handleTranslate}
+                  >
+                    {subtitleLoading === "translate"
+                      ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{LANGS[targetLang].label} 번역 중 (GPT-4o)...</>
+                      : <><Languages size={12} />② {LANGS[targetLang].label} 번역 (GPT-4o)</>
+                    }
+                  </button>
+                  {translateMessage && (
+                    <div style={{ fontSize: 10, color: "#818cf8", marginLeft: 4 }}>✓ {translateMessage}</div>
+                  )}
+                  {tracks.length > 1 && (
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
+                      💡 번역된 트랙을 선택한 뒤 다시 번역하면 그 언어를 원본으로 2차 번역됩니다.
+                    </div>
+                  )}
+                </div>
+
+                {/* 이중 자막 (보조 트랙) */}
+                {tracks.length > 1 && (
+                  <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", width: 56 }}>보조 자막</span>
+                    <select
+                      className="input" style={smallSelect}
+                      value={secondaryLang}
+                      onChange={e => setSecondaryLang(e.target.value as LangCode | "")}
+                    >
+                      <option value="">없음 (단일 자막)</option>
+                      {tracks.filter(l => l !== activeLang).map(l => (
+                        <option key={l} value={l}>{LANGS[l].flag} {LANGS[l].label} 함께 표시</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {subtitleError && (
+                  <div style={{ fontSize: 11, color: "#f87171", padding: "6px 8px", borderRadius: 6, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    <AlertCircle size={11} style={{ marginRight: 4 }} />{subtitleError}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 자막 스타일 */}
           <div className="card" style={{ padding: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <div style={{ ...sectionTitle, marginBottom: 12 }}>
               자막 스타일
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -879,9 +1357,9 @@ export default function StudioPage() {
                   <div style={{
                     padding: "4px 10px", borderRadius: 5,
                     background: fp.bg, color: fp.color,
-                    fontSize: 11, fontFamily: fp.font, fontWeight: 600, whiteSpace: "nowrap",
+                    fontSize: 11, fontFamily: fontStackFor(activeLang, fp.font), fontWeight: 600, whiteSpace: "nowrap",
                   }}>
-                    가나다 Abc
+                    가 A あ 中
                   </div>
                   <span style={{ fontSize: 12, color: preset === i ? "#818cf8" : "var(--text-muted)", flex: 1, textAlign: "left" }}>
                     {fp.name}
@@ -890,11 +1368,30 @@ export default function StudioPage() {
                 </button>
               ))}
             </div>
+            {/* 오버레이 위치 — 영상에 이미 구워진 자막과 겹칠 때 상단으로 이동 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>자막 위치</span>
+              {(["bottom", "top"] as const).map(pos => (
+                <button key={pos} onClick={() => setOverlayPos(pos)}
+                  style={{
+                    flex: 1, padding: "5px 8px", borderRadius: 6, fontSize: 11, cursor: "pointer",
+                    border: `1px solid ${overlayPos === pos ? "var(--brand)" : "var(--border-default)"}`,
+                    background: overlayPos === pos ? "var(--brand-dim)" : "var(--bg-elevated)",
+                    color: overlayPos === pos ? "#a5b4fc" : "var(--text-muted)",
+                    fontWeight: overlayPos === pos ? 700 : 500,
+                  }}>
+                  {pos === "bottom" ? "하단" : "상단"}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
+              영상에 이미 자막이 입혀져 있으면 상단으로 옮겨 겹침을 피하세요.
+            </div>
           </div>
 
           {/* 씬 타입 범례 */}
           <div className="card" style={{ padding: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <div style={{ ...sectionTitle, marginBottom: 10 }}>
               씬 타입
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -916,7 +1413,7 @@ export default function StudioPage() {
           {(videoId || isFileMode) && (
             <div className="card" style={{ padding: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                <div style={sectionTitle}>
                   썸네일
                 </div>
                 {isFileMode && (
@@ -938,7 +1435,7 @@ export default function StudioPage() {
                   </button>
                 )}
               </div>
-              
+
               {currentThumbnail ? (
                  // eslint-disable-next-line @next/next/no-img-element
                  <img src={currentThumbnail} alt="thumbnail" style={{ width: "100%", borderRadius: 8, border: "1px solid var(--border-default)" }} />
@@ -960,12 +1457,12 @@ export default function StudioPage() {
                 <div style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 12, paddingBottom: 4 }}>
                   {capturedThumbnails.map((thumb, idx) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img 
-                      key={idx} 
-                      src={thumb} 
-                      alt={`cap_${idx}`} 
+                    <img
+                      key={idx}
+                      src={thumb}
+                      alt={`cap_${idx}`}
                       onClick={() => setSelectedThumbnailIndex(idx)}
-                      style={{ 
+                      style={{
                         height: 40, aspectRatio: "16/9", objectFit: "cover", borderRadius: 4, cursor: "pointer", flexShrink: 0,
                         border: selectedThumbnailIndex === idx ? "2px solid var(--brand)" : "1px solid var(--border-subtle)",
                         opacity: selectedThumbnailIndex === idx ? 1 : 0.6,
@@ -978,126 +1475,26 @@ export default function StudioPage() {
             </div>
           )}
 
-          {/* 자막 워크플로우 */}
-          {(videoId || isFileMode) && (
-            <div className="card" style={{ padding: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                자막 워크플로우
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {/* ① 자막 추출 (스마트 모드: CC → Whisper 자동 폴백) */}
-                <button
-                  className="btn btn-brand btn-sm"
-                  style={{ gap: 6, justifyContent: "flex-start" }}
-                  disabled={subtitleLoading !== null}
-                  onClick={async () => {
-                    setSubtitleLoading("extract");
-                    setSubtitleError(null);
-                    setSubtitleMethod(null);
-                    setSubtitleMessage(null);
-                    try {
-                      const res = await fetch("/api/studio/subtitle", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "extract", videoId: videoId || "", fileVideoUrl: fileVideoUrl || "" }),
-                      });
-                      const ct = res.headers.get("content-type") || "";
-                      if (!ct.includes("application/json")) {
-                        setSubtitleError(`서버 오류 (${res.status}): JSON이 아닌 응답이 반환되었습니다. 서버 상태를 확인하세요.`);
-                        return;
-                      }
-                      let data;
-                      try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
-                      if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
-                      setSubs(data.subs);
-                      setSubtitleStep("extracted");
-                      setSubtitleMethod(data.method || null);
-                      setSubtitleMessage(data.message || null);
-                    } catch (e) { setSubtitleError(String(e)); }
-                    finally { setSubtitleLoading(null); }
-                  }}
-                >
-                  {subtitleLoading === "extract"
-                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />{isFileMode ? "Whisper 음성 분석 중..." : "자막 추출 중 (CC → Whisper 자동 전환)..."}</>
-                    : <><Download size={12} />{isFileMode ? "① 음성 분석 자막 추출 (Whisper AI)" : "① 자막 추출 (CC 우선 → Whisper 폴백)"}</>
-                  }
-                </button>
-                {subtitleStep && (
-                  <div style={{ fontSize: 10, marginLeft: 4, padding: "4px 8px", borderRadius: 4,
-                    color: subtitleMethod === "youtube_cc" ? "#34d399" : "#818cf8",
-                    background: subtitleMethod === "youtube_cc" ? "rgba(52,211,153,0.06)" : "rgba(129,140,248,0.06)",
-                  }}>
-                    {subtitleMethod === "youtube_cc" && "📝"}
-                    {subtitleMethod === "whisper" && "🎤"}
-                    {subtitleMethod === "whisper_fallback" && "🎤"}
-                    {" "}{subtitleMessage || `${subs.length}개 자막 추출됨`}
-                  </div>
-                )}
-
-                {/* ② 한국어 번역 */}
-                <button
-                  className="btn btn-brand btn-sm"
-                  style={{
-                    gap: 6, justifyContent: "flex-start",
-                    background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
-                    borderColor: "#8b5cf6",
-                  }}
-                  disabled={subtitleLoading !== null || !subtitleStep}
-                  onClick={async () => {
-                    setSubtitleLoading("translate");
-                    setSubtitleError(null);
-                    try {
-                      const res = await fetch("/api/studio/subtitle", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "translate", subs }),
-                      });
-                      const ct = res.headers.get("content-type") || "";
-                      if (!ct.includes("application/json")) {
-                        setSubtitleError(`서버 오류 (${res.status}): 번역 API 응답 오류. 서버 상태를 확인하세요.`);
-                        return;
-                      }
-                      let data;
-                      try { data = await res.json(); } catch { setSubtitleError(`응답 파싱 실패 (${res.status})`); return; }
-                      if (!res.ok) { setSubtitleError(data.error || `서버 오류 (${res.status})`); return; }
-                      setSubs(data.subs);
-                      setSubtitleStep("translated");
-                    } catch (e) { setSubtitleError(String(e)); }
-                    finally { setSubtitleLoading(null); }
-                  }}
-                >
-                  {subtitleLoading === "translate"
-                    ? <><Loader size={12} style={{ animation: "spin 0.9s linear infinite" }} />번역 중 (GPT-4o)...</>
-                    : <><Palette size={12} />② 한국어 번역 (GPT-4o)</>
-                  }
-                </button>
-                {subtitleStep === "translated" && (
-                  <div style={{ fontSize: 10, color: "#818cf8", marginLeft: 4 }}>✓ 한국어 번역 완료</div>
-                )}
-
-                {subtitleError && (
-                  <div style={{ fontSize: 11, color: "#f87171", padding: "6px 8px", borderRadius: 6, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                    <AlertCircle size={11} style={{ marginRight: 4 }} />{subtitleError}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* 내보내기 */}
           <div className="card" style={{ padding: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              내보내기
+            <div style={{ ...sectionTitle, marginBottom: 12 }}>
+              내보내기{activeLang && <span style={{ marginLeft: 6, color: "#818cf8" }}>{LANGS[activeLang].flag} {LANGS[activeLang].short}</span>}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button className="btn btn-ghost btn-sm" onClick={handleExportSRT}
+              <button className="btn btn-ghost btn-sm" onClick={handleExportSRT} disabled={subs.length === 0}
                 style={{ justifyContent: "flex-start", gap: 8 }}>
-                <Download size={13} /> SRT 자막 파일 다운로드
+                <Download size={13} /> SRT 자막 파일 다운로드{activeLang && ` (${LANGS[activeLang].short})`}
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={handleExportVTT}
+              <button className="btn btn-ghost btn-sm" onClick={handleExportVTT} disabled={subs.length === 0}
                 style={{ justifyContent: "flex-start", gap: 8 }}>
-                <Download size={13} /> VTT 자막 파일 다운로드
+                <Download size={13} /> VTT 자막 파일 다운로드{activeLang && ` (${LANGS[activeLang].short})`}
               </button>
+              {secondaryLang && activeLang && (
+                <button className="btn btn-ghost btn-sm" onClick={handleExportDualSRT}
+                  style={{ justifyContent: "flex-start", gap: 8 }}>
+                  <Download size={13} /> 이중 자막 SRT ({LANGS[activeLang].short} + {LANGS[secondaryLang].short})
+                </button>
+              )}
             </div>
           </div>
 

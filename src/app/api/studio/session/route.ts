@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isLangCode } from "@/lib/subtitle-lang";
 
 // workspace ID를 안전하게 가져오는 헬퍼
 async function getWorkspaceId(): Promise<string | null> {
@@ -27,6 +28,8 @@ export async function GET() {
         subCount: true,
         step: true,
         method: true,
+        sourceLang: true,
+        activeLang: true,
         preset: true,
         thumbnail: true,
         thumbnailsJson: true,
@@ -49,6 +52,9 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { videoId, fileVideoUrl, videoTitle, subs, step, method, preset, thumbnail, thumbnailsJson } = body;
+    // 언어 코드는 ko|en|ja|zh 만 허용, 그 외는 저장하지 않음
+    const sourceLang: string | null = isLangCode(body.sourceLang) ? body.sourceLang : null;
+    const activeLang: string | null = isLangCode(body.activeLang) ? body.activeLang : null;
 
     if (!subs || !Array.isArray(subs) || subs.length === 0) {
       return NextResponse.json({ error: "저장할 자막 데이터가 없습니다." }, { status: 400 });
@@ -81,6 +87,8 @@ export async function POST(req: NextRequest) {
           subCount: subs.length,
           step: step || existing.step,
           method: method || existing.method,
+          sourceLang: sourceLang ?? existing.sourceLang,
+          activeLang: activeLang ?? existing.activeLang,
           preset: preset ?? existing.preset,
           thumbnail: thumbnail || existing.thumbnail,
           thumbnailsJson: thumbnailsJson || existing.thumbnailsJson,
@@ -99,6 +107,8 @@ export async function POST(req: NextRequest) {
         subCount: subs.length,
         step: step || null,
         method: method || null,
+        sourceLang,
+        activeLang,
         preset: preset ?? 0,
         thumbnail: thumbnail || null,
         thumbnailsJson: thumbnailsJson || null,
