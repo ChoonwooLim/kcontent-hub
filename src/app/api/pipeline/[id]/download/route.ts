@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn, execSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import path from "path";
+import { resolveYtDlp } from "@/lib/ytdlp";
 
 /* ── 바이너리 경로 자동 탐색 ─────────────────────────── */
 const TMP_DIR = path.join(process.cwd(), "media", "downloads");
@@ -90,7 +91,7 @@ async function processDownloadJob(
   clips: { startTime: string; endTime: string; label?: string }[]
 ) {
   try {
-    const ytdlp = findBinary("yt-dlp");
+    const yt = await resolveYtDlp(); // 최신 yt-dlp (media/bin, 자동 갱신)
     const ffmpeg = findBinary("ffmpeg");
     const ytUrl = `https://www.youtube.com/watch?v=${ytVideoId}`;
     const sourcePath = path.join(TMP_DIR, `job_${jobId}_source.mp4`);
@@ -100,7 +101,8 @@ async function processDownloadJob(
       writeJobStatus(jobId, { status: "downloading", progress: 0, message: "영상 다운로드 시작..." });
 
       await new Promise<void>((resolve, reject) => {
-        const proc = spawn(ytdlp, [
+        const proc = spawn(yt.cmd, [
+          ...yt.baseArgs,
           "-f", "best[height<=1080]/best",
           "--no-check-certificates",
           "--newline",        // 진행률을 줄바꿈으로 출력

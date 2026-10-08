@@ -15,6 +15,7 @@ import {
 } from "@/lib/subtitle-lang";
 import { requireUser, resolveOpenAIKey, keyRequiredResponse } from "@/lib/access";
 import { type EngineConfig, type Provider, engineLabel, chunkSizeFor, engineForUser } from "@/lib/translate-engine";
+import { resolveYtDlp } from "@/lib/ytdlp";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // yt-dlp + Whisper API는 시간이 걸릴 수 있음
@@ -73,12 +74,13 @@ function findFileRecursive(dir: string, name: string, depth: number): string | n
 async function downloadAudioForWhisper(ytVideoId: string): Promise<string> {
   if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
 
-  const ytdlp = findBinary("yt-dlp");
+  const yt = await resolveYtDlp(); // 최신 yt-dlp (media/bin, 자동 갱신) — 패키지 버전은 403 이 남
   const ytUrl = `https://www.youtube.com/watch?v=${ytVideoId}`;
   const audioPath = path.join(TMP_DIR, `whisper_${ytVideoId}_${Date.now()}.m4a`);
 
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(ytdlp, [
+    const proc = spawn(yt.cmd, [
+      ...yt.baseArgs,
       "-f", "bestaudio[ext=m4a]/bestaudio",
       "--no-check-certificates",
       "-o", audioPath,

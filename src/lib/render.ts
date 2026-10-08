@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { isLangCode, normalizeCues } from "@/lib/subtitle-lang";
 import { SUBTITLE_PRESETS } from "@/lib/subtitle-presets";
 import type { ShareSub } from "@/lib/share-types";
+import { resolveYtDlp, isStaleYtDlpError, type YtDlp } from "@/lib/ytdlp";
 
 /**
  * 자막 번인(burn-in) MP4 렌더링 파이프라인 — 서버 전용
@@ -179,25 +180,49 @@ async function resolveSource(input: RenderInput, onProgress: (pct: number) => vo
     if (!/^[\w-]{6,20}$/.test(input.videoId)) throw new Error("잘못된 YouTube 영상 ID");
     const target = path.join(RENDER_DIR, `src_${input.videoId}.mp4`);
     if (existsSync(target) && statSync(target).size > 0) return target;
-    const ytdlp = findBinary("yt-dlp");
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn(ytdlp, [
+    const url = `https://www.youtube.com/watch?v=${input.videoId}`;
+    const download = (yt: YtDlp) => new Promise<void>((resolve, reject) => {
+      const proc = spawn(yt.cmd, [
+        ...yt.baseArgs,
         "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b",
         "--merge-output-format", "mp4",
         "--no-check-certificates", "--no-playlist", "--newline",
         "-o", target,
-        `https://www.youtube.com/watch?v=${input.videoId}`,
+        url,
       ]);
       let err = "";
       proc.stdout.on("data", (d: Buffer) => {
         const m = d.toString().match(/(\d+\.?\d*)%/);
         if (m) onProgress(Math.min(29, 2 + parseFloat(m[1]) * 0.27));
       });
-      proc.stderr.on("data", (d: Buffer) => { err += d.toString(); });
+      proc.stderr.on("data", (d: Buffer) => { err += d.toString(); if (err.length > 20000) err = err.slice(-10000); });
       const timer = setTimeout(() => { proc.kill(); reject(new Error("원본 다운로드 시간 초과 (15분)")); }, 15 * 60 * 1000);
-      proc.on("close", code => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(`yt-dlp 실패 (코드 ${code}): ${err.slice(-300)}`)); });
+      proc.on("close", code => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(Object.assign(new Error(`yt-dlp 실패 (코드 ${code}): ${err.trim().split("\n").slice(-2).join(" | ").slice(-300)}`), { stderr: err }));
+      });
       proc.on("error", e => { clearTimeout(timer); reject(e); });
     });
+    const cleanupPartials = () => {
+      for (const f of [target, `${target}.part`]) { try { if (existsSync(f)) unlinkSync(f); } catch { /* ignore */ } }
+    };
+
+    let yt = await resolveYtDlp();
+    try {
+      await download(yt);
+    } catch (e) {
+      const stderr = (e as { stderr?: string }).stderr ?? String(e);
+      if (!isStaleYtDlpError(stderr)) throw e;
+      // 403 / 서명 오류 등 "낡은 yt-dlp" 징후 → 최신판으로 강제 갱신 후 1회 재시도
+      cleanupPartials();
+      yt = await resolveYtDlp({ forceUpdate: true });
+      try {
+        await download(yt);
+      } catch (e2) {
+        throw new Error(`${String(e2 instanceof Error ? e2.message : e2)} — yt-dlp 최신판(${yt.source})으로 재시도했으나 실패. YouTube 가 서버 접근을 차단했거나 로그인·연령 제한 영상일 수 있습니다.`);
+      }
+    }
     if (!existsSync(target)) throw new Error("원본 다운로드 결과 파일이 없습니다");
     return target;
   }
