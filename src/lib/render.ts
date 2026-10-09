@@ -105,7 +105,7 @@ function assTime(sec: number): string {
 
 /** 중괄호(override 태그 주입)·줄바꿈 처리 */
 function assText(t: string): string {
-  return t.replace(/\r/g, "").replace(/\{/g, "(").replace(/\}/g, ")").trim().replace(/\n+/g, "\\N");
+  return t.replace(/\{/g, "(").replace(/\}/g, ")").replace(/\s*\r?\n+\s*/g, " ").trim();
 }
 
 export function buildAss(input: RenderInput): string {

@@ -6,7 +6,7 @@ import {
   Film, Loader, Check, Share2, Copy, Clapperboard, Eye, Lock, Globe
 } from "lucide-react";
 import { LANGS, LANG_CODES, type LangCode, fontStackFor, normalizeCues, toSRT, toVTT } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS, SUBTITLE_MAX_WIDTH, subtitleScale, overlayPlacement } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, SUBTITLE_MAX_WIDTH, subtitleScale, singleLine, overlayPlacement } from "@/lib/subtitle-presets";
 import type { ShareDto, ShareSub } from "@/lib/share-types";
 import type { YTPlayer } from "@/lib/youtube-player";
 
@@ -196,8 +196,8 @@ export default function ShareViewer({ share, viewerEmail, canManage }: Props) {
 
   /* ── 파생 ─────────────────────────────────────────────── */
   const active = findActive(subs, currentTime);
-  const primaryText = active ? trackText(active, lang) : "";
-  const secondaryText = active && secondary ? (active.texts?.[secondary] ?? "") : "";
+  const primaryText = active ? singleLine(trackText(active, lang)) : "";
+  const secondaryText = active && secondary ? singleLine(active.texts?.[secondary] ?? "") : "";
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
   const exportBase = share.title || "subtitles";
   const cues = (withSecondary: boolean) => subs.map(s => ({

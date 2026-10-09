@@ -18,6 +18,11 @@ export const SUBTITLE_PRESETS: SubtitlePreset[] = [
 /** 자막 상자 최대 폭 — 가능한 한 가로 한 줄에 담기도록 넓게 */
 export const SUBTITLE_MAX_WIDTH = "96%";
 
+/** 자막 안의 줄바꿈을 공백으로 — 짧은 문장이 두 줄로 쪼개져 보이지 않게 (표시·렌더링 공통) */
+export function singleLine(text: string | null | undefined): string {
+  return (text ?? "").replace(/\s*\r?\n+\s*/g, " ").trim();
+}
+
 /** 긴 문장은 글자 크기를 조금 줄여 한 줄에 담는다 (가장 긴 줄의 글자 수 기준) */
 export function subtitleScale(text: string | null | undefined): number {
   if (!text) return 1;

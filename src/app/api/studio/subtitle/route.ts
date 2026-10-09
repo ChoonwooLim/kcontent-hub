@@ -304,7 +304,8 @@ const JSON_RULE = `Return ONLY a JSON object of this exact shape and nothing els
 {"translations": [{"idx": 0, "text": "..."}, ...]}
 - Strict 1:1 mapping: exactly one output item per input line with the same idx. Never merge, split, drop or reorder lines.
 - "text" must contain only the translated subtitle text — no idx prefix, no quotes around it, no notes, no source text.
-- Do not leave any line untranslated.`;
+- Do not leave any line untranslated.
+- Never insert line breaks inside "text": each subtitle must be ONE line (the player wraps automatically).`;
 
 function broadcastPrompt(target: LangCode, srcName: string): string {
   switch (target) {
@@ -316,14 +317,14 @@ function broadcastPrompt(target: LangCode, srcName: string): string {
 2. 디테일과 스토리텔링: 원문이 짧고 뚝뚝 끊기더라도, 프로 작가의 역량을 발휘하여 문맥 사이사이에 생생한 묘사와 뉘앙스를 덧붙여 한 편의 흥미진진한 이야기처럼 유려하게 연결해주세요.
 3. 트렌디한 방송 언어: 다큐멘터리의 성우 나레이션이나 예능 프로그램의 쫀득한 자막처럼 텐션 조절을 확실하게 해주세요. 촌스러운 표현은 절대 금지!
 4. 고유명사 센스: 장소, 음식 등은 시청자가 단번에 클릭하고 싶게 매력적인 수식어를 살포시 덧붙여도 좋습니다. (한글 + 필요시 영문 병기)
-5. 자막 길이: 한 줄은 대략 20자 내외, 최대 2줄로 읽기 편하게.`;
+5. 자막 길이: 줄바꿈 없이 한 줄로, 가능한 한 30자 이내로 간결하게.`;
     case "en":
       return `You are a veteran broadcast writer and top-tier subtitle translator for English-language YouTube and streaming content. You despise stiff, literal translation and write vivid, punchy, native-sounding subtitles that hook viewers instantly.
 
 ■ Rules for high-quality transcreation:
 1. Transcreate, don't transliterate: carry the context, emotion and humor of the ${srcName} source across so an English-speaking viewer laughs or relates at exactly the right beat.
 2. Broadcast rhythm: write like a sharp documentary voice-over or a witty variety-show caption. Control the tension — never flat or robotic.
-3. Subtitle-friendly length: keep each line readable at speed (about 42 characters per line, at most two lines). Prefer short, strong words.
+3. Subtitle-friendly length: one line, no line breaks, ideally under 60 characters. Prefer short, strong words.
 4. Proper nouns (places, dishes, brands): keep them recognizable; a light, evocative descriptor is welcome when it helps the viewer.
 5. Keep the register consistent with the original speaker (casual vs. formal).`;
     case "ja":
@@ -332,7 +333,7 @@ function broadcastPrompt(target: LangCode, srcName: string): string {
 ■ ハイクオリティ翻訳・リライトのルール:
 1. 直訳ではなく「超訳」: ${srcName}原文の文脈と感情を、日本の視聴者が最も共感し笑える、自然で歯切れのよい話し言葉に仕上げる。
 2. 放送のテンポ: ドキュメンタリーのナレーションやバラエティのテロップのように緩急をつける。古臭い表現・翻訳調は禁止。
-3. 字幕に適した長さ: 1行おおよそ全角16〜20文字、最大2行。読みやすく簡潔に。
+3. 字幕に適した長さ: 改行せず1行で、できれば全角30文字以内に簡潔に。
 4. 固有名詞(地名・料理名・ブランド)は分かりやすく。必要なら魅力的な修飾語を軽く添えてもよい。
 5. 話者のトーン(砕けた口調／丁寧)に合わせて文体を統一する。ふりがなは付けない。`;
     case "zh":
@@ -341,7 +342,7 @@ function broadcastPrompt(target: LangCode, srcName: string): string {
 ■ 高质量翻译与润色规则：
 1. 超越直译：把${srcName}原文的语境和情绪完整传递，让中文观众在同一节拍上会心一笑或产生共鸣，语言地道、口语化。
 2. 节目节奏：像纪录片旁白或综艺花字一样张弛有度，禁止老套、翻译腔的表达。
-3. 字幕长度：每行约 15～20 个汉字，最多两行，简洁易读。
+3. 字幕长度：不换行，单行书写，尽量控制在 30 个汉字以内，简洁易读。
 4. 专有名词（地名、菜名、品牌）保持可识别，必要时可轻加一个有吸引力的修饰语。
 5. 与说话者语气保持一致（随意/正式）。必须使用简体中文。`;
     case "zh-Hant":
@@ -350,7 +351,7 @@ function broadcastPrompt(target: LangCode, srcName: string): string {
 ■ 高品質翻譯與潤飾規則：
 1. 超越直譯：把${srcName}原文的語境和情緒完整傳遞，讓台灣、香港等繁體中文觀眾在同一節拍上會心一笑或產生共鳴，語言道地、口語化。
 2. 節目節奏：像紀錄片旁白或綜藝字卡一樣張弛有度，禁止老套、翻譯腔的表達。
-3. 字幕長度：每行約 15～20 個漢字，最多兩行，簡潔易讀。
+3. 字幕長度：不換行，單行書寫，盡量控制在 30 個漢字以內，簡潔易讀。
 4. 專有名詞（地名、菜名、品牌）保持可辨識，必要時可輕加一個有吸引力的修飾語。
 5. 與說話者語氣保持一致（隨意／正式）。必須使用繁體中文，用詞以台灣慣用語為準。`;
   }
@@ -364,7 +365,7 @@ function faithfulPrompt(target: LangCode, srcName: string): string {
 ■ 규칙:
 1. 내용을 덧붙이거나 각색·생략하지 않는다.
 2. 자연스러운 구어체를 쓰고, 어색한 번역투는 피한다.
-3. 한 줄은 대략 20자 내외, 최대 2줄.
+3. 줄바꿈 없이 한 줄로, 가능한 한 30자 이내.
 4. 고유명사는 통용 표기를 따른다.
 5. 화자의 말투(반말/존댓말)를 일관되게 유지한다.`;
     case "en":
@@ -373,7 +374,7 @@ function faithfulPrompt(target: LangCode, srcName: string): string {
 ■ Rules:
 1. Do not add, embellish or omit content.
 2. Natural spoken English; avoid translationese.
-3. About 42 characters per line, at most two lines.
+3. One line, no line breaks, ideally under 60 characters.
 4. Keep proper nouns in their standard English form.
 5. Keep the speaker's register (casual vs. formal) consistent.`;
     case "ja":
@@ -382,7 +383,7 @@ function faithfulPrompt(target: LangCode, srcName: string): string {
 ■ ルール:
 1. 内容の追加・脚色・省略は禁止。
 2. 自然な話し言葉を使い、翻訳調は避ける。
-3. 1行おおよそ全角16〜20文字、最大2行。
+3. 改行せず1行で、できれば全角30文字以内。
 4. 固有名詞は一般的な表記に従う。
 5. 話者の文体(敬体／常体)を一貫させる。ふりがなは付けない。`;
     case "zh":
@@ -391,7 +392,7 @@ function faithfulPrompt(target: LangCode, srcName: string): string {
 ■ 规则：
 1. 不得添加、改编或省略内容。
 2. 使用自然口语，避免翻译腔。
-3. 每行约 15～20 个汉字，最多两行。
+3. 不换行，单行书写，尽量控制在 30 个汉字以内。
 4. 专有名词采用通用译名。
 5. 保持说话者语气一致。必须使用简体中文。`;
     case "zh-Hant":
@@ -400,7 +401,7 @@ function faithfulPrompt(target: LangCode, srcName: string): string {
 ■ 規則：
 1. 不得添加、改編或省略內容。
 2. 使用自然口語，避免翻譯腔。
-3. 每行約 15～20 個漢字，最多兩行。
+3. 不換行，單行書寫，盡量控制在 30 個漢字以內。
 4. 專有名詞採用通用譯名。
 5. 保持說話者語氣一致。必須使用繁體中文，用詞以台灣慣用語為準。`;
   }
@@ -507,7 +508,8 @@ async function translateChunk(
     if (!Array.isArray(list) || list.length === 0) throw new Error("번역 결과가 비어 있습니다");
     return chunk.map((s, idx) => {
       const tr = list.find(t => Number(t.idx) === idx);
-      const text = (tr?.text ?? tr?.ko ?? tr?.translation ?? "").toString().trim();
+      // 모델이 넣은 줄바꿈은 공백으로 — 자막은 한 줄로 두고 표시 단계에서만 필요 시 줄바꿈
+      const text = (tr?.text ?? tr?.ko ?? tr?.translation ?? "").toString().replace(/\s*\r?\n+\s*/g, " ").trim();
       return { ...s, text: text || s.text };
     });
   };

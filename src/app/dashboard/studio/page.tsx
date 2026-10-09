@@ -11,7 +11,7 @@ import {
   LANGS, LANG_CODES, type LangCode, isLangCode,
   detectLangFromTexts, fontStackFor, toSRT, toVTT, normalizeCues,
 } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS, SUBTITLE_MAX_WIDTH, subtitleScale, overlayPlacement, clampOverlay } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, SUBTITLE_MAX_WIDTH, subtitleScale, singleLine, overlayPlacement, clampOverlay } from "@/lib/subtitle-presets";
 import type { ShareDto } from "@/lib/share-types";
 
 /* ── 타입 ────────────────────────────────────────────────── */
@@ -665,6 +665,18 @@ export default function StudioPage() {
     ));
   };
 
+  /* ── 줄바꿈 일괄 정리: 모든 트랙의 줄바꿈을 공백으로 ──────── */
+  const breakCount = subs.reduce((n, s) => n + (/\n/.test(s.text) || Object.values(s.texts ?? {}).some(t => /\n/.test(t ?? "")) ? 1 : 0), 0);
+  const collapseLineBreaks = () => {
+    setSubs(prev => prev.map(s => ({
+      ...s,
+      text: singleLine(s.text),
+      texts: s.texts
+        ? (Object.fromEntries(Object.entries(s.texts).map(([k, v]) => [k, singleLine(v)])) as SubLine["texts"])
+        : s.texts,
+    })));
+  };
+
   /* ── 자막 위치 미세 이동 (화살표 버튼 · 영상 위 드래그) ──── */
   const setOverlayOffset = useCallback((x: number, y: number) => {
     const o = clampOverlay(x, y);
@@ -1181,14 +1193,14 @@ export default function StudioPage() {
                       position: "absolute", transform: "translateX(-50%)",
                       ...overlayPlacement(overlayPos, overlayX, overlayY),
                       background: p.bg, color: p.color, padding: isFullscreen ? "12px 28px" : "8px 18px", borderRadius: isFullscreen ? 10 : 6,
-                      fontSize: isFullscreen ? `calc(clamp(22px, 2.8vw, 48px) * ${subtitleScale(activeSub.text)})` : 16 * subtitleScale(activeSub.text),
+                      fontSize: isFullscreen ? `calc(clamp(22px, 2.8vw, 48px) * ${subtitleScale(singleLine(activeSub.text))})` : 16 * subtitleScale(singleLine(activeSub.text)),
                       fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
                       maxWidth: SUBTITLE_MAX_WIDTH, lineHeight: 1.5, whiteSpace: "pre-wrap",
                       transition: dragging ? "none" : "opacity 0.2s", zIndex: 3,
                       pointerEvents: "auto", cursor: dragging ? "grabbing" : "grab", userSelect: "none", touchAction: "none",
                       outline: dragging ? "1px dashed rgba(255,255,255,0.7)" : "none",
                     }}>
-                    {activeSub.text}
+                    {singleLine(activeSub.text)}
                     {secondaryLang && activeSub.texts?.[secondaryLang] && (
                       <div
                         lang={LANGS[secondaryLang].htmlLang}
@@ -1196,7 +1208,7 @@ export default function StudioPage() {
                           fontSize: isFullscreen ? "clamp(16px, 1.9vw, 32px)" : 12, fontWeight: 500, opacity: 0.85, marginTop: isFullscreen ? 8 : 4,
                           fontFamily: fontStackFor(secondaryLang, p.font),
                         }}>
-                        {activeSub.texts[secondaryLang]}
+                        {singleLine(activeSub.texts[secondaryLang])}
                       </div>
                     )}
                   </div>
@@ -1341,6 +1353,12 @@ export default function StudioPage() {
                 )}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", gap: 8, alignItems: "center" }}>
+                {breakCount > 0 && (
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "3px 8px" }} onClick={collapseLineBreaks}
+                    title="자막 안의 줄바꿈을 공백으로 바꿔 한 줄로 표시합니다 (모든 언어 트랙)">
+                    줄바꿈 → 한 줄 ({breakCount}개)
+                  </button>
+                )}
                 {refLang && <span>참고: {LANGS[refLang].flag} {LANGS[refLang].short}</span>}
                 <span>{subs.length}개 장면</span>
               </div>
