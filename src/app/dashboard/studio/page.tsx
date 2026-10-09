@@ -11,7 +11,7 @@ import {
   LANGS, LANG_CODES, type LangCode, isLangCode,
   detectLangFromTexts, fontStackFor, toSRT, toVTT, normalizeCues,
 } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS, overlayPlacement, clampOverlay } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, SUBTITLE_MAX_WIDTH, subtitleScale, overlayPlacement, clampOverlay } from "@/lib/subtitle-presets";
 import type { ShareDto } from "@/lib/share-types";
 
 /* ── 타입 ────────────────────────────────────────────────── */
@@ -1181,8 +1181,9 @@ export default function StudioPage() {
                       position: "absolute", transform: "translateX(-50%)",
                       ...overlayPlacement(overlayPos, overlayX, overlayY),
                       background: p.bg, color: p.color, padding: isFullscreen ? "12px 28px" : "8px 18px", borderRadius: isFullscreen ? 10 : 6,
-                      fontSize: isFullscreen ? "clamp(22px, 2.8vw, 48px)" : 16, fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
-                      maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap",
+                      fontSize: isFullscreen ? `calc(clamp(22px, 2.8vw, 48px) * ${subtitleScale(activeSub.text)})` : 16 * subtitleScale(activeSub.text),
+                      fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
+                      maxWidth: SUBTITLE_MAX_WIDTH, lineHeight: 1.5, whiteSpace: "pre-wrap",
                       transition: dragging ? "none" : "opacity 0.2s", zIndex: 3,
                       pointerEvents: "auto", cursor: dragging ? "grabbing" : "grab", userSelect: "none", touchAction: "none",
                       outline: dragging ? "1px dashed rgba(255,255,255,0.7)" : "none",

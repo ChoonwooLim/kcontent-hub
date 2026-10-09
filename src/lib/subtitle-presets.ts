@@ -15,6 +15,19 @@ export const SUBTITLE_PRESETS: SubtitlePreset[] = [
  * overlayX / overlayY: 플레이어 크기 대비 % 오프셋 (정수). X 오른쪽 +, Y 위쪽 +
  * 스튜디오 오버레이 · 공유 뷰어 · MP4 렌더링(ASS 마진)이 같은 값을 쓴다.
  */
+/** 자막 상자 최대 폭 — 가능한 한 가로 한 줄에 담기도록 넓게 */
+export const SUBTITLE_MAX_WIDTH = "96%";
+
+/** 긴 문장은 글자 크기를 조금 줄여 한 줄에 담는다 (가장 긴 줄의 글자 수 기준) */
+export function subtitleScale(text: string | null | undefined): number {
+  if (!text) return 1;
+  const longest = text.split("\n").reduce((m, l) => Math.max(m, [...l.trim()].length), 0);
+  if (longest > 64) return 0.72;
+  if (longest > 52) return 0.8;
+  if (longest > 42) return 0.9;
+  return 1;
+}
+
 export type OverlayPos = "bottom" | "top";
 export const OVERLAY_X_RANGE = 45;
 export const OVERLAY_Y_RANGE = 80;

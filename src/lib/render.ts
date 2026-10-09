@@ -4,7 +4,7 @@ import { writeFile } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { isLangCode, normalizeCues } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, subtitleScale } from "@/lib/subtitle-presets";
 import type { ShareSub } from "@/lib/share-types";
 import { resolveYtDlp, isStaleYtDlpError, type YtDlp } from "@/lib/ytdlp";
 
@@ -116,8 +116,9 @@ export function buildAss(input: RenderInput): string {
   // 미세 이동(%) → ASS 마진 (PlayRes 1920x1080 기준). 가로는 좌우 마진을 비대칭으로, 세로는 MarginV 로
   const dx = Math.round(((input.overlayX ?? 0) / 100) * 1920);
   const dy = Math.round(((input.overlayY ?? 0) / 100) * 1080);
-  const marginL = Math.max(0, 140 + dx);
-  const marginR = Math.max(0, 140 - dx);
+  // 좌우 여백 30px → 자막 폭 1860/1920 (97%) 로 가능한 한 한 줄에 담는다
+  const marginL = Math.max(0, 30 + dx);
+  const marginR = Math.max(0, 30 - dx);
   const marginV = Math.max(0, Math.min(1000, input.overlayPos === "top" ? 90 - dy : 90 + dy));
   const active = isLangCode(input.activeLang) ? input.activeLang : null;
   const secondary = isLangCode(input.secondaryLang) && input.secondaryLang !== active ? input.secondaryLang : null;
@@ -145,7 +146,11 @@ export function buildAss(input: RenderInput): string {
     const p = active ? (c.texts?.[active] ?? c.text) : c.text;
     if (!p || !p.trim()) continue;
     const s2 = secondary ? c.texts?.[secondary] : undefined;
-    const text = s2 && s2.trim() ? `${assText(p)}\\N{\\rSecondary}${assText(s2)}` : assText(p);
+    // 긴 줄은 글자 크기를 줄여 한 줄에 (62pt 기준 약 30자 → 축소 시 최대 약 42자)
+    const scale = Math.min(subtitleScale(p), s2 ? subtitleScale(s2) : 1);
+    const fsP = scale < 1 ? `{\\fs${Math.round(62 * scale)}}` : "";
+    const fsS = scale < 1 ? `\\fs${Math.round(42 * scale)}` : "";
+    const text = s2 && s2.trim() ? `${fsP}${assText(p)}\\N{\\rSecondary${fsS}}${assText(s2)}` : `${fsP}${assText(p)}`;
     lines.push(`Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Primary,,0,0,0,,${text}`);
   }
   return lines.join("\n") + "\n";

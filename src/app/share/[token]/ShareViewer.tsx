@@ -6,7 +6,7 @@ import {
   Film, Loader, Check, Share2, Copy, Clapperboard, Eye, Lock, Globe
 } from "lucide-react";
 import { LANGS, LANG_CODES, type LangCode, fontStackFor, normalizeCues, toSRT, toVTT } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS, overlayPlacement } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, SUBTITLE_MAX_WIDTH, subtitleScale, overlayPlacement } from "@/lib/subtitle-presets";
 import type { ShareDto, ShareSub } from "@/lib/share-types";
 import type { YTPlayer } from "@/lib/youtube-player";
 
@@ -280,9 +280,9 @@ export default function ShareViewer({ share, viewerEmail, canManage }: Props) {
                 ...overlayPlacement(share.overlayPos, share.overlayX, share.overlayY),
                 background: preset.bg, color: preset.color,
                 padding: isFullscreen ? "12px 28px" : "8px 18px", borderRadius: isFullscreen ? 10 : 6,
-                fontSize: isFullscreen ? "clamp(22px, 2.8vw, 48px)" : "clamp(13px, 1.6vw, 18px)", fontWeight: 600,
+                fontSize: `calc(${isFullscreen ? "clamp(22px, 2.8vw, 48px)" : "clamp(13px, 1.6vw, 18px)"} * ${subtitleScale(primaryText)})`, fontWeight: 600,
                 fontFamily: fontStackFor(lang, preset.font), textAlign: "center",
-                maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap", zIndex: 3, pointerEvents: "none",
+                maxWidth: SUBTITLE_MAX_WIDTH, lineHeight: 1.5, whiteSpace: "pre-wrap", zIndex: 3, pointerEvents: "none",
               }}>
               {primaryText}
               {secondaryText && (
