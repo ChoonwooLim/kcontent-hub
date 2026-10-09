@@ -71,6 +71,8 @@ export type RenderInput = {
   secondaryLang: string | null;
   preset: number;
   overlayPos: string;
+  overlayX?: number;   // % 오프셋 (오른쪽 +)
+  overlayY?: number;   // % 오프셋 (위쪽 +)
   videoId: string | null;
   fileVideoUrl: string | null;
 };
@@ -111,6 +113,12 @@ export function buildAss(input: RenderInput): string {
   const primary = hexToAss(preset.color);
   const box = rgbaToAss(preset.bg);
   const align = input.overlayPos === "top" ? 8 : 2;      // 8 = 상단 중앙, 2 = 하단 중앙
+  // 미세 이동(%) → ASS 마진 (PlayRes 1920x1080 기준). 가로는 좌우 마진을 비대칭으로, 세로는 MarginV 로
+  const dx = Math.round(((input.overlayX ?? 0) / 100) * 1920);
+  const dy = Math.round(((input.overlayY ?? 0) / 100) * 1080);
+  const marginL = Math.max(0, 140 + dx);
+  const marginR = Math.max(0, 140 - dx);
+  const marginV = Math.max(0, Math.min(1000, input.overlayPos === "top" ? 90 - dy : 90 + dy));
   const active = isLangCode(input.activeLang) ? input.activeLang : null;
   const secondary = isLangCode(input.secondaryLang) && input.secondaryLang !== active ? input.secondaryLang : null;
   const cues = normalizeCues([...input.subs].sort((a, b) => a.start - b.start));
@@ -126,8 +134,8 @@ export function buildAss(input: RenderInput): string {
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
     // BorderStyle 3 = 불투명 박스 (박스 색 = OutlineColour/BackColour, Outline = 박스 여백)
-    `Style: Primary,${FONT_FAMILY},62,${primary},&H000000FF,${box},${box},1,0,0,0,100,100,0,0,3,10,0,${align},140,140,90,1`,
-    `Style: Secondary,${FONT_FAMILY},42,${hexToAss("#ffffff", 0.92)},&H000000FF,${box},${box},0,0,0,0,100,100,0,0,3,8,0,${align},140,140,90,1`,
+    `Style: Primary,${FONT_FAMILY},62,${primary},&H000000FF,${box},${box},1,0,0,0,100,100,0,0,3,10,0,${align},${marginL},${marginR},${marginV},1`,
+    `Style: Secondary,${FONT_FAMILY},42,${hexToAss("#ffffff", 0.92)},&H000000FF,${box},${box},0,0,0,0,100,100,0,0,3,8,0,${align},${marginL},${marginR},${marginV},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -322,7 +330,7 @@ export async function runRender(shareId: string): Promise<void> {
     const input: RenderInput = {
       subs: JSON.parse(share.subsJson || "[]"),
       activeLang: share.activeLang, secondaryLang: share.secondaryLang,
-      preset: share.preset, overlayPos: share.overlayPos,
+      preset: share.preset, overlayPos: share.overlayPos, overlayX: share.overlayX, overlayY: share.overlayY,
       videoId: share.videoId, fileVideoUrl: share.fileVideoUrl,
     };
     if (!input.subs.length) throw new Error("렌더링할 자막이 없습니다");

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isLangCode } from "@/lib/subtitle-lang";
+import { clampOverlay } from "@/lib/subtitle-presets";
 
 // workspace ID를 안전하게 가져오는 헬퍼
 async function getWorkspaceId(): Promise<string | null> {
@@ -31,6 +32,9 @@ export async function GET() {
         sourceLang: true,
         activeLang: true,
         preset: true,
+        overlayPos: true,
+        overlayX: true,
+        overlayY: true,
         thumbnail: true,
         thumbnailsJson: true,
         createdAt: true,
@@ -55,6 +59,9 @@ export async function POST(req: NextRequest) {
     // 언어 코드는 ko|en|ja|zh 만 허용, 그 외는 저장하지 않음
     const sourceLang: string | null = isLangCode(body.sourceLang) ? body.sourceLang : null;
     const activeLang: string | null = isLangCode(body.activeLang) ? body.activeLang : null;
+    const overlayPos: string | undefined = body.overlayPos === "top" || body.overlayPos === "bottom" ? body.overlayPos : undefined;
+    const overlay = typeof body.overlayX === "number" || typeof body.overlayY === "number"
+      ? clampOverlay(Number(body.overlayX) || 0, Number(body.overlayY) || 0) : undefined;
 
     if (!subs || !Array.isArray(subs) || subs.length === 0) {
       return NextResponse.json({ error: "저장할 자막 데이터가 없습니다." }, { status: 400 });
@@ -90,6 +97,9 @@ export async function POST(req: NextRequest) {
           sourceLang: sourceLang ?? existing.sourceLang,
           activeLang: activeLang ?? existing.activeLang,
           preset: preset ?? existing.preset,
+          overlayPos: overlayPos ?? existing.overlayPos,
+          overlayX: overlay?.x ?? existing.overlayX,
+          overlayY: overlay?.y ?? existing.overlayY,
           thumbnail: thumbnail || existing.thumbnail,
           thumbnailsJson: thumbnailsJson || existing.thumbnailsJson,
         },
@@ -110,6 +120,9 @@ export async function POST(req: NextRequest) {
         sourceLang,
         activeLang,
         preset: preset ?? 0,
+        overlayPos: overlayPos ?? "bottom",
+        overlayX: overlay?.x ?? 0,
+        overlayY: overlay?.y ?? 0,
         thumbnail: thumbnail || null,
         thumbnailsJson: thumbnailsJson || null,
         workspaceId,

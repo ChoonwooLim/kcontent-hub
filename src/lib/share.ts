@@ -32,6 +32,8 @@ export function toShareDto(s: ShareWithCreator, opts: { includeSubs?: boolean } 
     secondaryLang: isLangCode(s.secondaryLang) ? s.secondaryLang : null,
     preset: s.preset,
     overlayPos: s.overlayPos === "top" ? "top" : "bottom",
+    overlayX: s.overlayX,
+    overlayY: s.overlayY,
     isPublic: s.isPublic,
     views: s.views,
     renderStatus: status,

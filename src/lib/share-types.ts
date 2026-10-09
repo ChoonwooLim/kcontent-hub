@@ -23,6 +23,8 @@ export type ShareDto = {
   secondaryLang: LangCode | null;
   preset: number;
   overlayPos: "bottom" | "top";
+  overlayX: number;
+  overlayY: number;
   isPublic: boolean;
   views: number;
   renderStatus: RenderStatus;

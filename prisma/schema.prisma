@@ -191,6 +191,9 @@ model StudioSession {
   sourceLang     String?              // 원본 자막 언어 (ko | en | ja | zh)
   activeLang     String?              // 마지막으로 편집 중이던 언어 트랙 (ko | en | ja | zh)
   preset         Int      @default(0) // 스타일 프리셋 인덱스
+  overlayPos     String   @default("bottom") // 자막 기준 위치 bottom | top
+  overlayX       Int      @default(0)        // 자막 미세 이동 X (%, 오른쪽 +)
+  overlayY       Int      @default(0)        // 자막 미세 이동 Y (%, 위쪽 +)
   thumbnail      String?  @db.Text    // 메인 썸네일 URL
   thumbnailsJson String?  @db.Text    // 캡처된 다중 썸네일 JSON 배열
 
@@ -323,6 +326,8 @@ model SubtitleShare {
   secondaryLang  String?                      // 이중 자막 보조 트랙
   preset         Int       @default(0)        // 자막 스타일 프리셋
   overlayPos     String    @default("bottom") // bottom | top
+  overlayX       Int       @default(0)        // 자막 미세 이동 X (%)
+  overlayY       Int       @default(0)        // 자막 미세 이동 Y (%)
   isPublic       Boolean   @default(false)    // true: 로그인 없이 링크만으로 열람
   views          Int       @default(0)
 

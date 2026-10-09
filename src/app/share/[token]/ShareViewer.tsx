@@ -6,7 +6,7 @@ import {
   Film, Loader, Check, Share2, Copy, Clapperboard, Eye, Lock, Globe
 } from "lucide-react";
 import { LANGS, LANG_CODES, type LangCode, fontStackFor, normalizeCues, toSRT, toVTT } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, overlayPlacement } from "@/lib/subtitle-presets";
 import type { ShareDto, ShareSub } from "@/lib/share-types";
 import type { YTPlayer } from "@/lib/youtube-player";
 
@@ -276,8 +276,8 @@ export default function ShareViewer({ share, viewerEmail, canManage }: Props) {
             <div
               lang={lang ? LANGS[lang].htmlLang : undefined}
               style={{
-                position: "absolute", left: "50%", transform: "translateX(-50%)",
-                ...(share.overlayPos === "top" ? { top: "9%" } : { bottom: "12%" }),
+                position: "absolute", transform: "translateX(-50%)",
+                ...overlayPlacement(share.overlayPos, share.overlayX, share.overlayY),
                 background: preset.bg, color: preset.color,
                 padding: isFullscreen ? "12px 28px" : "8px 18px", borderRadius: isFullscreen ? 10 : 6,
                 fontSize: isFullscreen ? "clamp(22px, 2.8vw, 48px)" : "clamp(13px, 1.6vw, 18px)", fontWeight: 600,

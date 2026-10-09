@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/access";
 import { isLangCode } from "@/lib/subtitle-lang";
 import { newShareToken, sanitizeSubs, toShareDto } from "@/lib/share";
+import { clampOverlay } from "@/lib/subtitle-presets";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
   const title = String(body.title ?? "").trim().slice(0, 200) || (videoId ? `YouTube ${videoId}` : "자막 영상");
   const preset = Number.isInteger(body.preset) && body.preset >= 0 && body.preset <= 3 ? body.preset : 0;
 
+  const overlay = clampOverlay(Number(body.overlayX), Number(body.overlayY));
   let ws: { id: string } | null = null;
   try { ws = await prisma.workspace.findFirst({ select: { id: true } }); } catch { /* optional */ }
 
@@ -62,6 +64,8 @@ export async function POST(req: NextRequest) {
       secondaryLang: isLangCode(body.secondaryLang) ? body.secondaryLang : null,
       preset,
       overlayPos: body.overlayPos === "top" ? "top" : "bottom",
+      overlayX: overlay.x,
+      overlayY: overlay.y,
       isPublic: body.isPublic === true,
       createdById: g.user.id,
       workspaceId: ws?.id ?? null,

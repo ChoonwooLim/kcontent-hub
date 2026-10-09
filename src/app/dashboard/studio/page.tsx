@@ -5,13 +5,13 @@ import {
   Play, Pause, Download, SkipBack, Volume2, VolumeX,
   Sparkles, Check, Link2, Loader, AlertCircle,
   Save, FolderOpen, Trash2, Clock, Camera, Languages, ArrowRight, Maximize2, Minimize2,
-  Share2, Copy, ExternalLink, Clapperboard
+  Share2, Copy, ExternalLink, Clapperboard, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Move
 } from "lucide-react";
 import {
   LANGS, LANG_CODES, type LangCode, isLangCode,
   detectLangFromTexts, fontStackFor, toSRT, toVTT, normalizeCues,
 } from "@/lib/subtitle-lang";
-import { SUBTITLE_PRESETS } from "@/lib/subtitle-presets";
+import { SUBTITLE_PRESETS, overlayPlacement, clampOverlay } from "@/lib/subtitle-presets";
 import type { ShareDto } from "@/lib/share-types";
 
 /* ── 타입 ────────────────────────────────────────────────── */
@@ -181,7 +181,11 @@ export default function StudioPage() {
   const [translateStyle, setTranslateStyle] = useState<TranslateStyle>("broadcast");
   const [secondaryLang, setSecondaryLang] = useState<LangCode | "">("");      // 이중 자막 보조 트랙
   const [mergeFragments, setMergeFragments] = useState(true);                // 추출 시 짧은 조각 자막을 앞 문장에 병합
-  const [overlayPos, setOverlayPos] = useState<"bottom" | "top">("bottom");  // 오버레이 위치 (영상에 구워진 자막과 겹침 회피)
+  const [overlayPos, setOverlayPos] = useState<"bottom" | "top">("bottom");  // 오버레이 기준 위치
+  const [overlayX, setOverlayX] = useState(0);                                 // 미세 이동 X (%, 오른쪽 +)
+  const [overlayY, setOverlayY] = useState(0);                                 // 미세 이동 Y (%, 위쪽 +)
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
   const [showYtCaptions, setShowYtCaptions] = useState(false);               // YouTube 플레이어 자체 CC 표시 여부 (기본 숨김)
   const ytCaptionsRef = useRef(false);
   const [translateEngine, setTranslateEngine] = useState<string | null>(null);                  // 서버 번역 엔진 라벨
@@ -314,6 +318,10 @@ export default function StudioPage() {
            if (isLangCode(parsed.secondaryLang)) setSecondaryLang(parsed.secondaryLang);
            if (typeof parsed.mergeFragments === "boolean") setMergeFragments(parsed.mergeFragments);
            if (parsed.overlayPos === "top" || parsed.overlayPos === "bottom") setOverlayPos(parsed.overlayPos);
+           if (typeof parsed.overlayX === "number" || typeof parsed.overlayY === "number") {
+             const o = clampOverlay(Number(parsed.overlayX) || 0, Number(parsed.overlayY) || 0);
+             setOverlayX(o.x); setOverlayY(o.y);
+           }
            if (typeof parsed.showYtCaptions === "boolean") setShowYtCaptions(parsed.showYtCaptions);
         }
       } catch {}
@@ -331,14 +339,14 @@ export default function StudioPage() {
           videoId, fileVideoUrl, videoTitle, subs, preset,
           subtitleStep, subtitleMethod, capturedThumbnails,
           sourceHint, sourceLang, activeLang, targetLang, translateStyle, secondaryLang,
-          mergeFragments, overlayPos, showYtCaptions,
+          mergeFragments, overlayPos, overlayX, overlayY, showYtCaptions,
         }));
       } catch {}
     }, 500);
     return () => clearTimeout(timer);
   }, [videoId, fileVideoUrl, videoTitle, subs, preset, subtitleStep, subtitleMethod, capturedThumbnails,
       sourceHint, sourceLang, activeLang, targetLang, translateStyle, secondaryLang,
-      mergeFragments, overlayPos, showYtCaptions, isLoaded]);
+      mergeFragments, overlayPos, overlayX, overlayY, showYtCaptions, isLoaded]);
 
   /* ── HTML5 Video 플레이어 이벤트 ────────────────────────── */
   useEffect(() => {
@@ -518,7 +526,7 @@ export default function StudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: videoTitle, videoId: videoId || null, fileVideoUrl: fileVideoUrl || null,
-          subs, sourceLang, activeLang, secondaryLang: secondaryLang || null, preset, overlayPos, isPublic: sharePublic,
+          subs, sourceLang, activeLang, secondaryLang: secondaryLang || null, preset, overlayPos, overlayX, overlayY, isPublic: sharePublic,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -656,6 +664,26 @@ export default function StudioPage() {
         : s
     ));
   };
+
+  /* ── 자막 위치 미세 이동 (화살표 버튼 · 영상 위 드래그) ──── */
+  const setOverlayOffset = useCallback((x: number, y: number) => {
+    const o = clampOverlay(x, y);
+    setOverlayX(o.x); setOverlayY(o.y);
+  }, []);
+  const nudgeOverlay = (dx: number, dy: number) => setOverlayOffset(overlayX + dx, overlayY + dy);
+  const onOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation(); e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: overlayX, baseY: overlayY };
+    setDragging(true);
+  };
+  const onOverlayPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current, c = containerRef.current;
+    if (!d || !c) return;
+    const r = c.getBoundingClientRect();
+    setOverlayOffset(d.baseX + ((e.clientX - d.startX) / r.width) * 100, d.baseY - ((e.clientY - d.startY) / r.height) * 100);
+  };
+  const onOverlayPointerUp = () => { dragRef.current = null; setDragging(false); };
 
   /* ── 언어 트랙 전환 ────────────────────────────────────── */
   const switchTrack = (lang: LangCode) => {
@@ -849,6 +877,7 @@ export default function StudioPage() {
           sourceLang,
           activeLang,
           preset,
+          overlayPos, overlayX, overlayY,
           thumbnail: currentThumbnail || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null),
           thumbnailsJson: capturedThumbnails.length > 0 ? JSON.stringify(capturedThumbnails) : null,
         }),
@@ -902,6 +931,8 @@ export default function StudioPage() {
       setSubtitleStep(s.step || null);
       setSubtitleMethod(s.method || null);
       setPreset(s.preset ?? 0);
+      setOverlayPos(s.overlayPos === "top" ? "top" : "bottom");
+      { const o = clampOverlay(Number(s.overlayX) || 0, Number(s.overlayY) || 0); setOverlayX(o.x); setOverlayY(o.y); }
       setSubtitleError(null);
       setSubtitleMessage(null);
       setTranslateMessage(null);
@@ -1141,14 +1172,20 @@ export default function StudioPage() {
                 {activeSub && activeSub.text && (
                   <div
                     lang={activeLang ? LANGS[activeLang].htmlLang : undefined}
+                    onPointerDown={onOverlayPointerDown}
+                    onPointerMove={onOverlayPointerMove}
+                    onPointerUp={onOverlayPointerUp}
+                    onPointerCancel={onOverlayPointerUp}
+                    title="드래그하여 자막 위치 이동"
                     style={{
-                      position: "absolute", left: "50%", transform: "translateX(-50%)",
-                      ...(overlayPos === "top" ? { top: "9%" } : { bottom: "12%" }),
+                      position: "absolute", transform: "translateX(-50%)",
+                      ...overlayPlacement(overlayPos, overlayX, overlayY),
                       background: p.bg, color: p.color, padding: isFullscreen ? "12px 28px" : "8px 18px", borderRadius: isFullscreen ? 10 : 6,
                       fontSize: isFullscreen ? "clamp(22px, 2.8vw, 48px)" : 16, fontWeight: 600, fontFamily: fontStackFor(activeLang, p.font), textAlign: "center",
                       maxWidth: "80%", lineHeight: 1.5, whiteSpace: "pre-wrap",
-                      transition: "opacity 0.2s", zIndex: 3,
-                      pointerEvents: "none",
+                      transition: dragging ? "none" : "opacity 0.2s", zIndex: 3,
+                      pointerEvents: "auto", cursor: dragging ? "grabbing" : "grab", userSelect: "none", touchAction: "none",
+                      outline: dragging ? "1px dashed rgba(255,255,255,0.7)" : "none",
                     }}>
                     {activeSub.text}
                     {secondaryLang && activeSub.texts?.[secondaryLang] && (
@@ -1574,6 +1611,30 @@ export default function StudioPage() {
             </div>
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
               영상에 이미 자막이 입혀져 있으면 상단으로 옮겨 겹침을 피하세요.
+            </div>
+
+            {/* 미세 이동 (상하좌우) */}
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}><Move size={11} /> 미세 이동 (1칸 = 2%)</span>
+                <span style={{ fontSize: 10, color: "var(--text-secondary)", fontFamily: "JetBrains Mono, monospace" }}>
+                  X {overlayX >= 0 ? "+" : ""}{overlayX}% · Y {overlayY >= 0 ? "+" : ""}{overlayY}%
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 34px)", gridTemplateRows: "repeat(3, 34px)", gap: 4, justifyContent: "center" }}>
+                <span />
+                <button className="btn-icon" title="위로 2%" onClick={() => nudgeOverlay(0, 2)}><ChevronUp size={16} /></button>
+                <span />
+                <button className="btn-icon" title="왼쪽으로 2%" onClick={() => nudgeOverlay(-2, 0)}><ChevronLeft size={16} /></button>
+                <button className="btn-icon" title="가운데(기본 위치)로" disabled={overlayX === 0 && overlayY === 0} onClick={() => setOverlayOffset(0, 0)} style={{ opacity: overlayX === 0 && overlayY === 0 ? 0.35 : 1 }}><RotateCcw size={13} /></button>
+                <button className="btn-icon" title="오른쪽으로 2%" onClick={() => nudgeOverlay(2, 0)}><ChevronRight size={16} /></button>
+                <span />
+                <button className="btn-icon" title="아래로 2%" onClick={() => nudgeOverlay(0, -2)}><ChevronDown size={16} /></button>
+                <span />
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, textAlign: "center", lineHeight: 1.5 }}>
+                영상 위의 자막을 마우스로 끌어서 옮길 수도 있습니다.<br />위치는 작업 저장·공유 링크·MP4 렌더링에 그대로 적용됩니다.
+              </div>
             </div>
           </div>
 
