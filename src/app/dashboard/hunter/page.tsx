@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Search, SlidersHorizontal, Play, Eye, ThumbsUp, Clock,
   Download, RefreshCw, Zap, X, ExternalLink, AlertCircle,
-  Check, Copy, BookmarkCheck, Loader, Mail, MessageSquare, Scissors
+  Check, Copy, BookmarkCheck, Loader, Mail, MessageSquare, Scissors, Film
 } from "lucide-react";
 
 import { NICHE_GROUPS, NICHES, MAX_CUSTOM_KEYWORDS } from "@/lib/niches";
@@ -73,7 +73,7 @@ function ScoreMeter({ score, grade }: { score: number; grade: "S" | "A" | "B" })
   );
 }
 
-function VideoModal({ video, onClose, onSaveAndEdit }: { video: VideoItem; onClose: () => void; onSaveAndEdit: (v: VideoItem) => void; }) {
+function VideoModal({ video, onClose, onSaveAndEdit, onSendToStudio }: { video: VideoItem; onClose: () => void; onSaveAndEdit: (v: VideoItem) => void; onSendToStudio: (v: VideoItem) => void; }) {
   const ytUrl = `https://www.youtube.com/watch?v=${video.ytId}`;
   return (
     <div onClick={onClose} style={{
@@ -111,6 +111,7 @@ function VideoModal({ video, onClose, onSaveAndEdit }: { video: VideoItem; onClo
             <a href={`/dashboard/script?url=${encodeURIComponent(ytUrl)}`} style={{ textDecoration: "none" }}>
               <button className="btn btn-brand btn-sm" style={{ gap: 6 }}><Zap size={12} />AI 대본 생성</button>
             </a>
+            <button className="btn btn-brand btn-sm" style={{ gap: 6, background: "linear-gradient(135deg, #8b5cf6, #6366f1)", borderColor: "#8b5cf6" }} onClick={() => onSendToStudio(video)}><Film size={12} />자막 스튜디오</button>
             <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ padding: "6px 8px" }}><X size={14} /></button>
           </div>
         </div>
@@ -352,6 +353,23 @@ export default function HunterPage() {
     }
   };
 
+  // 자막 스튜디오로 보내기 — 세션 저장소로 영상 정보를 넘기고 이동 (스튜디오에서 ① 자막 추출부터 진행)
+  const handleSendToStudio = (v: VideoItem) => {
+    try {
+      sessionStorage.setItem("studio_data", JSON.stringify({
+        videoId: v.ytId,
+        ytVideoId: v.ytId,
+        videoTitle: v.title,
+        channelTitle: v.channel,
+        title: v.title,
+        thumbnailTop: "",
+        thumbnailBottom: "",
+        script: [],
+      }));
+    } catch { /* sessionStorage 불가 시 스튜디오에서 URL 직접 입력 */ }
+    router.push("/dashboard/studio");
+  };
+
   // 영상요약편집 — 저장 후 편집기로 이동
   const handleSaveAndEdit = async (v: VideoItem) => {
     setSavingId(v.id);
@@ -454,7 +472,7 @@ export default function HunterPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22, maxWidth: 1100 }}>
-      {playing && <VideoModal video={playing} onClose={() => setPlaying(null)} onSaveAndEdit={handleSaveAndEdit} />}
+      {playing && <VideoModal video={playing} onClose={() => setPlaying(null)} onSaveAndEdit={handleSaveAndEdit} onSendToStudio={handleSendToStudio} />}
       {outreachModal && <OutreachModal data={outreachModal} onClose={() => setOutreachModal(null)} />}
 
       <div>
@@ -713,6 +731,14 @@ export default function HunterPage() {
                     <a href={`/dashboard/script?url=${encodeURIComponent(`https://youtube.com/watch?v=${v.ytId}`)}`} style={{ textDecoration: "none" }}>
                       <button className="btn btn-brand btn-sm"><Zap size={12} />AI 대본 생성</button>
                     </a>
+                    <button
+                      className="btn btn-brand btn-sm"
+                      style={{ gap: 6, background: "linear-gradient(135deg, #8b5cf6, #6366f1)", borderColor: "#8b5cf6" }}
+                      title="자막 스튜디오에서 자막 추출·번역·공유"
+                      onClick={(e) => { e.stopPropagation(); handleSendToStudio(v); }}
+                    >
+                      <Film size={12} />자막 스튜디오
+                    </button>
                     <button
                       className={`btn ${savedIds.has(v.id) ? 'btn-brand' : 'btn-ghost'} btn-sm`}
                       style={{
